@@ -10,11 +10,15 @@
 #include <algorithm>
 
 #include "./exec_pass.h"
-#include "./graph_executor.h"
+#include "./lite_executor.h"
 #include "../engine/profiler.h"
 
 namespace mxnet {
 namespace exec {
+
+using nnvm::StorageVector;
+
+
 LiteExecutor::~LiteExecutor() {
   for (auto& n : op_nodes_) {
     if (n.cached_opr != nullptr) {
@@ -408,7 +412,7 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
   size_t arg_top = 0, aux_top = 0;
 
   // initialize input2entryid_ (pin)
-  input2entryid_.resize(idx.input_nodes());
+  input2entryid_.resize(idx.input_nodes().size());
 
   for (size_t i = 0; i < num_forward_inputs_; ++i) {
     const uint32_t nid = idx.input_nodes().at(i);
@@ -574,6 +578,7 @@ void LiteExecutor::InitDataEntryMemory(std::vector<NDArray>* shared_pool) {
 
 
 void LiteExecutor::InitCachedOps() {
+  using nnvm::StorageVector;
   // get the graph
   const auto& idx = graph_.indexed_graph();
   const auto& vstorage_inplace =
@@ -939,7 +944,7 @@ LiteExecutor::CachedSegOpr LiteExecutor::CreateCachedSegOpr(size_t topo_start, s
 }
 
 
-void SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) {
+void LiteExecutor::SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) {
   // get the graph
   const auto& idx = graph_.indexed_graph();
   // get the storage
@@ -947,18 +952,18 @@ void SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) {
   // get op_execs 
   auto& op_execs = graph_.GetAttr<OpExecVector>("op_execs");
 
-  for(int i = 0;i < arg_idxes.size();i ++) {
+  for(size_t i = 0;i < arg_idxes.size();i ++) {
     auto entry_id = input2entryid_.at(arg_idxes[i]);
     auto store_id = vstorage[entry_id];
-    auto& op_inputs = storeid2opinputs_[store_id];
+    auto& op_inputs = storeid2opinput_[store_id];
     for(auto& pair : op_inputs) {
-      op_execs[pair.first].SetInputTBlob(pair.second, blobs[i]);
+      op_execs[pair.first]->SetInputTBlob(pair.second, blobs[i]);
     }
   }
 }
 
 
-void SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs) {
+void LiteExecutor::SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs) {
   // get the graph
   const auto& idx = graph_.indexed_graph();
   // get the storage
@@ -966,12 +971,12 @@ void SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs) {
   // get op_execs 
   auto& op_execs = graph_.GetAttr<OpExecVector>("op_execs");
 
-  for(int i = 0;i < out_idxes.size();i ++) {
+  for(size_t i = 0;i < out_idxes.size();i ++) {
     auto entry_id = output2entryid_.at(out_idxes[i]);
     auto store_id = vstorage[entry_id];
-    auto& op_outputs = storeid2opoutputs_[store_id];
+    auto& op_outputs = storeid2opoutput_[store_id];
     for(auto& pair : op_outputs) {
-      op_execs[pair.first].SetOutputTBlob(pair.second, blobs[i]);
+      op_execs[pair.first]->SetOutputTBlob(pair.second, blobs[i]);
     }
   }
 }

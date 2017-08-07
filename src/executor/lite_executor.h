@@ -63,6 +63,8 @@ class LiteExecutor : public Executor {
             const nnvm::NodeEntryMap<NDArray>& feed_dict
               = nnvm::NodeEntryMap<NDArray>());
 
+ void SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) override;
+ void SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs) override;
  protected:
   // Information about operational node
   struct OpNode {
