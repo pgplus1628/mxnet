@@ -82,7 +82,7 @@ const std::vector<NDArray>& LiteExecutor::outputs() const {
   return output_arrays_;
 }
 
-nnvm::NodeEntry AttrHint(nnvm::NodeEntry src, nnvm::NodeEntry like) {
+nnvm::NodeEntry LiteAttrHint(nnvm::NodeEntry src, nnvm::NodeEntry like) {
   static const Op* id_like = Op::Get("_identity_with_attr_like_rhs");
   nnvm::NodePtr n = nnvm::Node::Create();
   n->attrs.op = id_like;
@@ -91,7 +91,7 @@ nnvm::NodeEntry AttrHint(nnvm::NodeEntry src, nnvm::NodeEntry like) {
   return nnvm::NodeEntry{n, 0, 0};
 }
 
-nnvm::NodeEntry AggregateGradient(std::vector<nnvm::NodeEntry>&& v) {
+nnvm::NodeEntry LiteAggregateGradient(std::vector<nnvm::NodeEntry>&& v) {
   using nnvm::Op;
   static size_t inplace_sum_cap = dmlc::GetEnv("MXNET_EXEC_INPLACE_GRAD_SUM_CAP", 8);
   static const Op* ewise_plus_op = Op::Get("_grad_add");
@@ -201,7 +201,7 @@ nnvm::Graph LiteExecutor::InitFullGraph(
   if (!need_grad) return g;
   for (size_t i = 0; i < g.outputs.size(); ++i) {
     NodeEntry ngrad{nnvm::Node::Create(), 0, 0};
-    head_grad_entry_.emplace_back(AttrHint(ngrad, g.outputs[i]));
+    head_grad_entry_.emplace_back(LiteAttrHint(ngrad, g.outputs[i]));
     head_grad_map_[ngrad.node.get()] = i;
   }
   std::vector<NodePtr> args = symbol.ListInputs(nnvm::Symbol::kReadOnlyArgs);
@@ -236,7 +236,7 @@ nnvm::Graph LiteExecutor::InitFullGraph(
   // take gradient
   nnvm::Graph g_grad = nnvm::pass::Gradient(
       g, symbol.outputs, xs, head_grad_entry_,
-      AggregateGradient, need_mirror, nullptr,
+      LiteAggregateGradient, need_mirror, nullptr,
       zero_ops);
   CHECK_EQ(g_grad.outputs.size(), xs.size());
   for (const auto &e : g_grad.outputs) {
@@ -246,7 +246,7 @@ nnvm::Graph LiteExecutor::InitFullGraph(
 }
 
 // pass to assign context to the graph
-Graph AssignContext(Graph g,
+Graph LiteAssignContext(Graph g,
                     const Context& default_ctx,
                     const std::map<std::string, Context>& ctx_map,
                     const std::vector<NDArray>& in_args,
@@ -391,7 +391,7 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
                                const nnvm::NodeEntryMap<NDArray>& feed_dict) {
   // setup gradient
   nnvm::Graph g = InitFullGraph(symbol, grad_req_type, arg_grad_store);
-  g = AssignContext(g, default_ctx, ctx_map,
+  g = LiteAssignContext(g, default_ctx, ctx_map,
                     in_args,
                     grad_store_,
                     aux_states,
