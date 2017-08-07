@@ -164,10 +164,16 @@ class LiteExecutor : public Executor {
   std::vector<CachedSegOpr> cached_seg_opr_;
 
   // storage id -> <op idx, input idx > 
-  std::vector<std::pair<uint32_t, size_t> > storeid2opinput_;
+  std::vector<std::vector<std::pair<uint32_t, size_t>>> storeid2opinput_;
 
   // storage id -> <op idx, output idx > 
-  std::vector<std::pair<uint32_t, size_t> > storeid2opoutput_;
+  std::vector<std::vector<std::pair<uint32_t, size_t>>> storeid2opoutput_;
+
+  // input order (in_args) -> entry_id
+  std::vector<size_t> input2entryid_;
+
+  std::vector<size_t> output2entryid_;
+
 };
 
 }  // namespace exec

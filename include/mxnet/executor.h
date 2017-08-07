@@ -99,6 +99,14 @@ class Executor {
    * \brief Install a callback to notify the completion of operation.
    */
   virtual void SetMonitorCallback(const MonitorCallback& callback) {}
+
+  /*
+   * (pin) 
+   * Set argument and output TBlob 
+   */
+  virtual void SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) ;
+  virtual void SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs);
+
 };  // class executor
 }  // namespace mxnet
 #endif  // MXNET_EXECUTOR_H_

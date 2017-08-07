@@ -50,6 +50,12 @@ class OpExecutor {
   virtual void Run(RunContext rctx) = 0;
   /*! \return the execution type */
   virtual Operator::ExecType exec_type() const = 0;
+
+  /*
+   * (pin)
+   */
+  virtual void SetInputTBlob(size_t idx, TBlob& blob) = 0;
+  virtual void SetOutputTBlob(size_t idx, TBlob& blob) = 0;
 };
 
 /*!

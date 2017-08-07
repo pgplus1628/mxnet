@@ -34,6 +34,15 @@ class ForwardOpExecutor : public OpExecutor {
 #endif
   }
 
+  /* (pin) */
+  void SetInputTBlob(size_t idx, TBlob& blob) {
+    in_data_[idx] = blob; 
+  }
+
+  void SetOutputTBlob(size_t idx, TBlob& blob) {
+    out_data_[idx] = blob; 
+  }
+
   void Setup() override {
     in_data_.clear(); aux_data_.clear();
     for (size_t i = 0; i < in_array.size(); ++i) {
@@ -79,6 +88,16 @@ class BackwardOpExecutor : public OpExecutor {
     mkl_tblobs_prv_to_cpu(aux_data_);
 #endif
   }
+
+  /* (pin) */
+  void SetInputTBlob(size_t idx, TBlob& blob) {
+    in_data_[idx] = blob; 
+  }
+
+  void SetOutputTBlob(size_t idx, TBlob& blob) {
+    out_data_[idx] = blob; 
+  }
+
   void Setup() override {
     size_t arg_top = 0, aux_top = 0;
     aux_data_.resize(aux_index_.size());
@@ -143,6 +162,16 @@ class FComputeExecutor : public OpExecutor {
     mkl_tblobs_prv_to_cpu(out_data_);
 #endif
   }
+
+  /* (pin) */
+  void SetInputTBlob(size_t idx, TBlob& blob) {
+    in_data_[idx] = blob; 
+  }
+
+  void SetOutputTBlob(size_t idx, TBlob& blob) {
+    out_data_[idx] = blob; 
+  }
+
   void Setup() override {
     in_data_.resize(in_array.size());
     out_data_.resize(out_array.size());

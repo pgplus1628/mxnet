@@ -357,9 +357,13 @@ void LiteExecutor::Init(nnvm::Symbol symbol,
   {
     // initialize output arrays
     auto& idx = graph_.indexed_graph();
+    output2entryid_.resize(num_forward_outputs_);
     for (size_t i = 0; i < num_forward_outputs_; ++i) {
       auto& e = idx.outputs()[i];
       output_arrays_.push_back(data_entry_[idx.entry_id(e)]);
+
+      // initialize output2entryid_ (pin)
+      output2entryid_[i] = idx.entry_id(e);
     }
     // initialize head gradient array
     head_grad_array_.resize(symbol.outputs.size());
@@ -402,6 +406,10 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
   nnvm::ShapeVector arg_shapes;
   nnvm::DTypeVector arg_types;
   size_t arg_top = 0, aux_top = 0;
+
+  // initialize input2entryid_ (pin)
+  input2entryid_.resize(idx.input_nodes());
+
   for (size_t i = 0; i < num_forward_inputs_; ++i) {
     const uint32_t nid = idx.input_nodes().at(i);
     if (mutable_nodes.count(nid)) {
@@ -413,6 +421,7 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
     } else {
       CHECK_LT(arg_top, in_args.size());
       data_entry_[idx.entry_id(nid, 0)] = in_args[arg_top];
+      input2entryid_[arg_top] = idx.entry_id(nid,0); // (pin)
       arg_shapes.push_back(in_args[arg_top].shape());
       arg_types.push_back(in_args[arg_top].dtype());
       ++arg_top;
@@ -577,8 +586,9 @@ void LiteExecutor::InitCachedOps() {
   const auto& skip_plus_node = graph_.GetAttr<std::vector<int> >("skip_plus_node");
 
   auto storeidmax = *std::max_element(vstorage.begin(), vstorage.end());
-  storeid2opinput_ = std::vector<std::pair<uint32_t, size_t>>(storeidmax + 1, std::make_pair(-1, -1));
-  storeid2opoutput_ = std::vector<std::pair<uint32_t, size_t>>(storeidmax + 1, std::make_pair(-1, -1));
+ 
+  storeid2opinput_.resize(storeidmax + 1);
+  storeid2opoutput_.resize(storeidmax + 1);
 
   op_nodes_.resize(idx.num_nodes());
   // setup the array and requirements.
@@ -603,7 +613,7 @@ void LiteExecutor::InitCachedOps() {
     for (const auto& e : inode.inputs) {
       exec->in_array.push_back(data_entry_[idx.entry_id(e)]);
       // update storeid2opinput
-      storeid2opinput_[vstorage[idx.entry_id(e)]] = std::make_pair(nid, __i);
+      storeid2opinput_[vstorage[idx.entry_id(e)]].push_back(std::make_pair(nid, __i));
       __i += 1;
     }
     // detect inplace requirement
@@ -611,7 +621,7 @@ void LiteExecutor::InitCachedOps() {
       uint32_t eid = idx.entry_id(nid, index);
       exec->out_array.push_back(data_entry_[eid]);
       //TODO check inplace write
-      storeid2opoutput_[vstorage[eid]] = std::make_pair(nid, index);
+      storeid2opoutput_[vstorage[eid]].push_back(std::make_pair(nid, index));
 
       if (addto_entry.at(eid) != 0) {
         exec->req.push_back(kAddTo);
@@ -643,7 +653,10 @@ void LiteExecutor::InitCachedOps() {
     std::vector<Engine::VarHandle> use_vars, mutate_vars;
     for (size_t i = 0; i < exec->in_array.size(); ++i) {
       auto& nd = exec->in_array[i];
-      use_vars.push_back(nd.var());
+      use_vars.push_back(nd.var()); //TODO (pin) doublecheck if we use new input NDArray, 
+                                    // will there be some bug.
+                                    // DO we need to reset the vars in use_vars
+                                    // and mutate_vars
     }
     for (auto& r : exec->op_ctx.requested) {
       mutate_vars.push_back(r.var);
@@ -823,6 +836,8 @@ void LiteExecutor::RunOps(bool is_train, size_t topo_start, size_t topo_end) {
     OpNode& opnode = op_nodes_[nid];
     if (op_nodes_[nid].skip_exec_node) continue;
     opnode.exec->op_ctx.is_train = is_train;
+    //TODO (pin) deal with CrossDeviceCopy. 
+    //Need the new input data should on the same device with original input
     if (opnode.exec->exec_type() == Operator::kCrossDeviceCopy) {
       CHECK_EQ(inode.inputs.size(), 1U);
       CHECK_EQ(opnode.exec->in_array.size(), 1U);
@@ -922,6 +937,46 @@ LiteExecutor::CachedSegOpr LiteExecutor::CreateCachedSegOpr(size_t topo_start, s
       PROFILER_MESSAGE(p_opr_name));
   return ret;
 }
+
+
+void SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) {
+  // get the graph
+  const auto& idx = graph_.indexed_graph();
+  // get the storage
+  const auto& vstorage = graph_.GetAttr<StorageVector>("storage_id");
+  // get op_execs 
+  auto& op_execs = graph_.GetAttr<OpExecVector>("op_execs");
+
+  for(int i = 0;i < arg_idxes.size();i ++) {
+    auto entry_id = input2entryid_.at(arg_idxes[i]);
+    auto store_id = vstorage[entry_id];
+    auto& op_inputs = storeid2opinputs_[store_id];
+    for(auto& pair : op_inputs) {
+      op_execs[pair.first].SetInputTBlob(pair.second, blobs[i]);
+    }
+  }
+}
+
+
+void SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs) {
+  // get the graph
+  const auto& idx = graph_.indexed_graph();
+  // get the storage
+  const auto& vstorage = graph_.GetAttr<StorageVector>("storage_id");
+  // get op_execs 
+  auto& op_execs = graph_.GetAttr<OpExecVector>("op_execs");
+
+  for(int i = 0;i < out_idxes.size();i ++) {
+    auto entry_id = output2entryid_.at(out_idxes[i]);
+    auto store_id = vstorage[entry_id];
+    auto& op_outputs = storeid2opoutputs_[store_id];
+    for(auto& pair : op_outputs) {
+      op_execs[pair.first].SetOutputTBlob(pair.second, blobs[i]);
+    }
+  }
+}
+
+
 }  // namespace exec
 
 Executor *Executor::Bind(nnvm::Symbol symbol,
