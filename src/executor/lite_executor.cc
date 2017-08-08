@@ -79,6 +79,7 @@ void LiteExecutor::SetMonitorCallback(const MonitorCallback& callback) {
 }
 
 const std::vector<NDArray>& LiteExecutor::outputs() const {
+  LOG(FATAL) << " LiteExecutor Should NEVER COME HERE.";
   return output_arrays_;
 }
 
@@ -199,6 +200,9 @@ nnvm::Graph LiteExecutor::InitFullGraph(
     if (req != kNullOp) need_grad = true;
   }
   if (!need_grad) return g;
+
+  LOG(FATAL) << " LiteExecutor Should NEVER COME HERE.";
+
   for (size_t i = 0; i < g.outputs.size(); ++i) {
     NodeEntry ngrad{nnvm::Node::Create(), 0, 0};
     head_grad_entry_.emplace_back(LiteAttrHint(ngrad, g.outputs[i]));
@@ -253,7 +257,8 @@ Graph LiteAssignContext(Graph g,
                     const std::vector<std::pair<OpReqType, NDArray> >& grad_store,
                     const std::vector<NDArray>& aux_states,
                     size_t num_forward_inputs,
-                    size_t num_forward_outputs) {
+                    size_t num_forward_outputs,
+                    const std::vector<NDArray>& out_args) {
   const auto& idx = g.indexed_graph();
   const auto& mutable_nodes = idx.mutable_input_nodes();
   // default use default context.
@@ -266,6 +271,14 @@ Graph LiteAssignContext(Graph g,
         << ". All arguments must be in global context (" << default_ctx
         << ") unless group2ctx is specified for cross-device graph.";
     }
+    // (pin)
+    for (const auto& x : out_args) {
+      CHECK(x.ctx() == default_ctx)
+        << "Output array is in " << x.ctx() << " while binding with ctx=" << default_ctx
+        << ". All arguments must be in global context (" << default_ctx
+        << ") unless group2ctx is specified for cross-device graph.";
+    }
+   
     for (const auto& x : grad_store) {
       CHECK(x.second.ctx() == default_ctx)
         << "Gradient array is in " << x.second.ctx() << " while binding with ctx="
@@ -345,7 +358,8 @@ void LiteExecutor::Init(nnvm::Symbol symbol,
                          const std::vector<OpReqType>& grad_req_type,
                          const std::vector<NDArray>& aux_states,
                          Executor* shared_exec,
-                         const nnvm::NodeEntryMap<NDArray>& feed_dict) {
+                         const nnvm::NodeEntryMap<NDArray>& feed_dict,
+                         const std::vector<NDArray>& out_args) { // (pin)
   VLOG(1) << " LITE INIT 0" ;
   nnvm::Graph g = InitGraph(symbol, default_ctx,
                             ctx_map, in_args, arg_grad_store,
@@ -364,16 +378,15 @@ void LiteExecutor::Init(nnvm::Symbol symbol,
   }
   VLOG(1) << " LITE INIT 4" ;
   {
-    // initialize output arrays
     auto& idx = graph_.indexed_graph();
-    output2entryid_.resize(num_forward_outputs_);
+    /*
+    // initialize output arrays
     for (size_t i = 0; i < num_forward_outputs_; ++i) {
       auto& e = idx.outputs()[i];
       output_arrays_.push_back(data_entry_[idx.entry_id(e)]);
-
-      // initialize output2entryid_ (pin)
-      output2entryid_[i] = idx.entry_id(e);
     }
+    */ // (pin)
+
     // initialize head gradient array
     head_grad_array_.resize(symbol.outputs.size());
     for (size_t i = num_forward_inputs_; i < idx.input_nodes().size(); ++i) {
@@ -396,7 +409,8 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
                                const std::vector<NDArray>& arg_grad_store,
                                const std::vector<OpReqType>& grad_req_type,
                                const std::vector<NDArray>& aux_states,
-                               const nnvm::NodeEntryMap<NDArray>& feed_dict) {
+                               const nnvm::NodeEntryMap<NDArray>& feed_dict,
+                               const std::vector<NDArray>& out_args) {
   // setup gradient
   nnvm::Graph g = InitFullGraph(symbol, grad_req_type, arg_grad_store);
   g = LiteAssignContext(g, default_ctx, ctx_map,
@@ -404,7 +418,8 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
                     grad_store_,
                     aux_states,
                     num_forward_inputs_,
-                    num_forward_outputs_);
+                    num_forward_outputs_,
+                    out_args);
   const auto& idx = g.indexed_graph();
   // get number of nodes used in forward pass
   num_forward_nodes_ = 0;
@@ -421,7 +436,9 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
 
   // initialize entryid2arg_idx_ (pin)
   is_arg_.clear();
-  entryid2arg_idx_ = std::vector<int>(idx.num_node_entries(), -1);
+  is_out_.clear();
+  entryid2argidx_ = std::vector<int>(idx.num_node_entries(), -1);
+  entryid2outidx_ = std::vector<int>(idx.num_node_entries(), -1);
 
   for (size_t i = 0; i < num_forward_inputs_; ++i) {
     const uint32_t nid = idx.input_nodes().at(i);
@@ -441,6 +458,16 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
       ++arg_top;
     }
   }
+
+  // output (pin) TODO double check the order
+  for(size_t i = 0;i < num_forward_outputs_;i ++) { 
+    auto eid = idx.entry_id(idx.outputs()[i]);
+    data_entry_[eid] = out_args[i];
+    entryid2outidx_[eid] = i;
+    is_out_.insert(eid);
+  }
+
+  // gradient 
   for (size_t j = num_forward_outputs_; j < idx.outputs().size(); ++j) {
     data_entry_[idx.entry_id(idx.outputs()[j])]
         = grad_store_[j - num_forward_outputs_].second;
@@ -464,10 +491,17 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
       data_entry_[eid] = kv.second;
       arg_storage_id[eid] = kExternalStorageID;
     }
+
+    // (pin) set output as external storage
+    for (size_t i = 0;i < num_forward_outputs_;i ++) {
+      auto eid = idx.entry_id(idx.outputs()[i]);
+      arg_storage_id[eid] = kExternalStorageID;
+    }
+    
     g.attrs["storage"] = std::make_shared<dmlc::any>(std::move(arg_storage_id));
     g = nnvm::ApplyPass(g, "PlanMemory");
   }
-  g = DetectInplaceAddTo(g);
+  g = DetectInplaceAddTo(g); // (pin) TODO double check the correctness here.
   return g;
 }
 
@@ -510,7 +544,7 @@ void LiteExecutor::InitDataEntryMemory(std::vector<NDArray>* shared_pool) {
   }
   // get maximum bytes in each pool
   for (size_t i = 0; i < vshape.size(); ++i) {
-    if (!data_entry_[i].is_none()) continue; // pool will not use the arg and aux adta.
+    if (!data_entry_[i].is_none()) continue; // pool only contains not allocated entry
     size_t bytes = vshape[i].Size() * mshadow::mshadow_sizeof(vdtype[i]);
     int storage_id = vstorage[i];
     if (storage_id < 0) continue;
@@ -528,6 +562,7 @@ void LiteExecutor::InitDataEntryMemory(std::vector<NDArray>* shared_pool) {
   // construct the re-use pool, if needed
   std::multimap<size_t, NDArray> free_pool;
   if (shared_pool != nullptr) {
+    LOG(FATAL) << " LiteExecutor Not Implemented. ";
     for (const NDArray& nd : *shared_pool) {
       size_t bytes = nd.shape().Size() * mshadow::mshadow_sizeof(nd.dtype());
       free_pool.insert(std::make_pair(bytes, nd));
@@ -607,6 +642,7 @@ void LiteExecutor::InitCachedOps() {
 
   // (pin)
   arg2opinput_.resize(is_arg_.size()); 
+  out2opoutput_.resize(is_out_.size());
 
   op_nodes_.resize(idx.num_nodes());
   // setup the array and requirements.
@@ -647,7 +683,17 @@ void LiteExecutor::InitCachedOps() {
     for (uint32_t index = 0; index < inode.source->num_outputs(); ++index) {
       uint32_t eid = idx.entry_id(nid, index);
       exec->out_array.push_back(data_entry_[eid]);
-      //TODO check inplace write (pin)
+      // (pin)
+      if (is_out_.count(eid)) {
+        // if this entry is out
+        int _out_idx = entryid2outidx_[eid];
+        CHECK_GE(_out_idx, 0);
+        out2opoutput_[_out_idx].push_back(std::make_pair(nid, index));
+        VLOG(1) << " LITE OUT eic " << eid
+                << " nid " << nid 
+                << " idx " << index
+                << " out idx " << _out_idx;
+      }
 
       if (addto_entry.at(eid) != 0) {
         exec->req.push_back(kAddTo);
@@ -982,7 +1028,18 @@ void LiteExecutor::SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob
 
 
 void LiteExecutor::SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs) {
-  // TODO
+  // get the graph
+  const auto& idx = graph_.indexed_graph();
+  VLOG(1) << " LITE OUT 1 " ;
+  // get op_execs 
+  auto& op_execs = graph_.GetAttr<OpExecVector>("op_execs");
+  VLOG(1) << " LITE OUT 2 " ;
+
+  for(size_t i = 0;i < out_idxes.size();i ++) {
+    for(auto& pair : out2opoutput_[out_idxes[i]]) {
+      op_execs[pair.first]->SetOutputTBlob(pair.second, blobs[i]);
+    }
+  }
 }
 
 
@@ -995,7 +1052,8 @@ Executor *Executor::Bind(nnvm::Symbol symbol,
                          const std::vector<NDArray> &arg_grad_store,
                          const std::vector<OpReqType> &grad_req_type,
                          const std::vector<NDArray> &aux_states,
-                         Executor* shared_exec) {
+                         Executor* shared_exec,
+                         const std::vector<NDArray> &out_args) {
   auto exec = new exec::LiteExecutor();
   exec->Init(symbol, default_ctx, group2ctx,
              in_args, arg_grad_store, grad_req_type, aux_states,

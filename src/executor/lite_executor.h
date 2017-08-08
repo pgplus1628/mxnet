@@ -62,7 +62,10 @@ class LiteExecutor : public Executor {
             const std::vector<NDArray>& aux_states,
             Executor* shared_exec = nullptr,
             const nnvm::NodeEntryMap<NDArray>& feed_dict
-              = nnvm::NodeEntryMap<NDArray>());
+              = nnvm::NodeEntryMap<NDArray>(),
+            const std::vector<NDArray>& out_args
+              = std::vector<NDArray>()); // (pin) output ndarray
+             
 
  void SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) override;
  void SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs) override;
@@ -107,7 +110,9 @@ class LiteExecutor : public Executor {
                   const std::vector<OpReqType>& grad_req_type,
                   const std::vector<NDArray>& aux_states,
                   const nnvm::NodeEntryMap<NDArray>& feed_dict
-                    = nnvm::NodeEntryMap<NDArray>());
+                    = nnvm::NodeEntryMap<NDArray>(),
+                  const std::vector<NDArray>& out_args
+                    = std::vector<NDArray>());
   // initialize the full graph, including gradient.
   Graph InitFullGraph(nnvm::Symbol symbol,
                       const std::vector<OpReqType>& grad_req_type,
@@ -174,9 +179,10 @@ class LiteExecutor : public Executor {
   // arg idx -> <op idx, input idx>
   std::vector<std::vector<std::pair<uint32_t, size_t>>> arg2opinput_;
 
+  std::vector<int> entryid2outidx_;
+  std::set<size_t> is_out_;
   // output idx -> <op idx, output idx > 
   std::vector<std::vector<std::pair<uint32_t, size_t>>> out2opoutput_;
-
 
 };
 

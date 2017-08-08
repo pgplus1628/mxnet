@@ -90,7 +90,8 @@ class Executor {
                         const std::vector<NDArray> &arg_grad_store,
                         const std::vector<OpReqType> &grad_req_type,
                         const std::vector<NDArray> &aux_states,
-                        Executor* shared_exec = NULL);
+                        Executor* shared_exec = NULL,
+                        const std::vector<NDArray> &out_args = std::vector<NDArray>()); // (pin)
   /*!
    * \brief the prototype of user-defined monitor callback
    */
