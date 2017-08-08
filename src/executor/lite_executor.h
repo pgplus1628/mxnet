@@ -17,6 +17,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <set>
 #include "./exec_pass.h"
 
 namespace mxnet {
@@ -165,16 +166,17 @@ class LiteExecutor : public Executor {
   // cached segment operator
   std::vector<CachedSegOpr> cached_seg_opr_;
 
-  // storage id -> <op idx, input idx > 
-  std::vector<std::vector<std::pair<uint32_t, size_t>>> storeid2opinput_;
+  // (pin) 
+  // for input entryid -> arg idx
+  std::vector<int> entryid2argidx_;
+  // if given entryid is arg
+  std::set<size_t> is_arg_; 
+  // arg idx -> <op idx, input idx>
+  std::vector<std::vector<std::pair<uint32_t, size_t>>> arg2opinput_;
 
-  // storage id -> <op idx, output idx > 
-  std::vector<std::vector<std::pair<uint32_t, size_t>>> storeid2opoutput_;
+  // output idx -> <op idx, output idx > 
+  std::vector<std::vector<std::pair<uint32_t, size_t>>> out2opoutput_;
 
-  // input order (in_args) -> entry_id
-  std::vector<size_t> input2entryid_;
-
-  std::vector<size_t> output2entryid_;
 
 };
 

@@ -346,18 +346,23 @@ void LiteExecutor::Init(nnvm::Symbol symbol,
                          const std::vector<NDArray>& aux_states,
                          Executor* shared_exec,
                          const nnvm::NodeEntryMap<NDArray>& feed_dict) {
+  VLOG(1) << " LITE INIT 0" ;
   nnvm::Graph g = InitGraph(symbol, default_ctx,
                             ctx_map, in_args, arg_grad_store,
                             grad_req_type, aux_states, feed_dict);
+  VLOG(1) << " LITE INIT 1" ;
   g.attrs["saved_opr"] = std::make_shared<nnvm::any>(std::move(saved_opr_));
   g = AttachOpExecs(g);
+  VLOG(1) << " LITE INIT 2" ;
   g = AttachOpResources(g);
+  VLOG(1) << " LITE INIT 3" ;
   graph_ = std::move(g);
   if (shared_exec != nullptr) {
     this->InitDataEntryMemory(&(dynamic_cast<LiteExecutor*>(shared_exec)->data_pool_));
   } else {
     this->InitDataEntryMemory(nullptr);
   }
+  VLOG(1) << " LITE INIT 4" ;
   {
     // initialize output arrays
     auto& idx = graph_.indexed_graph();
@@ -377,8 +382,11 @@ void LiteExecutor::Init(nnvm::Symbol symbol,
       head_grad_array_[oid] = data_entry_[idx.entry_id(nid, 0)];
     }
   }
+  VLOG(1) << " LITE INIT 5" ;
   this->InitCachedOps();
+  VLOG(1) << " LITE INIT 6" ;
   this->InitOpSegs();
+  VLOG(1) << " LITE INIT 7" ;
 }
 
 Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
@@ -411,8 +419,9 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
   nnvm::DTypeVector arg_types;
   size_t arg_top = 0, aux_top = 0;
 
-  // initialize input2entryid_ (pin)
-  input2entryid_.resize(idx.input_nodes().size());
+  // initialize entryid2arg_idx_ (pin)
+  is_arg_.clear();
+  entryid2arg_idx_ = std::vector<int>(idx.num_node_entries(), -1);
 
   for (size_t i = 0; i < num_forward_inputs_; ++i) {
     const uint32_t nid = idx.input_nodes().at(i);
@@ -425,7 +434,8 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
     } else {
       CHECK_LT(arg_top, in_args.size());
       data_entry_[idx.entry_id(nid, 0)] = in_args[arg_top];
-      input2entryid_[arg_top] = idx.entry_id(nid,0); // (pin)
+      entryid2argidx_[idx.entry_id(nid,0)] = arg_top; // (pin)
+      is_arg_.insert(idx.entry_id(nid,0)); // (pin)
       arg_shapes.push_back(in_args[arg_top].shape());
       arg_types.push_back(in_args[arg_top].dtype());
       ++arg_top;
@@ -500,7 +510,7 @@ void LiteExecutor::InitDataEntryMemory(std::vector<NDArray>* shared_pool) {
   }
   // get maximum bytes in each pool
   for (size_t i = 0; i < vshape.size(); ++i) {
-    if (!data_entry_[i].is_none()) continue;
+    if (!data_entry_[i].is_none()) continue; // pool will not use the arg and aux adta.
     size_t bytes = vshape[i].Size() * mshadow::mshadow_sizeof(vdtype[i]);
     int storage_id = vstorage[i];
     if (storage_id < 0) continue;
@@ -590,10 +600,13 @@ void LiteExecutor::InitCachedOps() {
   const auto& addto_entry = graph_.GetAttr<std::vector<int> >("addto_entry");
   const auto& skip_plus_node = graph_.GetAttr<std::vector<int> >("skip_plus_node");
 
-  auto storeidmax = *std::max_element(vstorage.begin(), vstorage.end());
- 
-  storeid2opinput_.resize(storeidmax + 1);
-  storeid2opoutput_.resize(storeidmax + 1);
+  for(size_t i = 0;i < vstorage.size();i ++) {
+    VLOG(1) << i << " vstorage "  << vstorage[i]
+                 << " vstorage_inplace " << vstorage_inplace[i];
+  }
+
+  // (pin)
+  arg2opinput_.resize(is_arg_.size()); 
 
   op_nodes_.resize(idx.num_nodes());
   // setup the array and requirements.
@@ -617,16 +630,24 @@ void LiteExecutor::InitCachedOps() {
     size_t __i = 0;
     for (const auto& e : inode.inputs) {
       exec->in_array.push_back(data_entry_[idx.entry_id(e)]);
-      // update storeid2opinput
-      storeid2opinput_[vstorage[idx.entry_id(e)]].push_back(std::make_pair(nid, __i));
+      // (pin)
+      if (is_arg_.count(idx.entry_id(e))) {
+        // if this entry is arg
+        int _arg_idx = entryid2argidx_[idx.entry_id(e)];
+        CHECK_GE(_arg_idx, 0);
+        arg2opinput_[_arg_idx].push_back(std::make_pair(nid, __i));
+        VLOG(1) << " LITE ICO eid " << idx.entry_id(e)
+                << " nid " << nid
+                << " __i " << __i
+                << " arg idx " << _arg_idx;
+      }
       __i += 1;
     }
     // detect inplace requirement
     for (uint32_t index = 0; index < inode.source->num_outputs(); ++index) {
       uint32_t eid = idx.entry_id(nid, index);
       exec->out_array.push_back(data_entry_[eid]);
-      //TODO check inplace write
-      storeid2opoutput_[vstorage[eid]].push_back(std::make_pair(nid, index));
+      //TODO check inplace write (pin)
 
       if (addto_entry.at(eid) != 0) {
         exec->req.push_back(kAddTo);
@@ -947,16 +968,13 @@ LiteExecutor::CachedSegOpr LiteExecutor::CreateCachedSegOpr(size_t topo_start, s
 void LiteExecutor::SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) {
   // get the graph
   const auto& idx = graph_.indexed_graph();
-  // get the storage
-  const auto& vstorage = graph_.GetAttr<StorageVector>("storage_id");
+  VLOG(1) << " LITE 1 " ;
   // get op_execs 
   auto& op_execs = graph_.GetAttr<OpExecVector>("op_execs");
+  VLOG(1) << " LITE 2 " ;
 
   for(size_t i = 0;i < arg_idxes.size();i ++) {
-    auto entry_id = input2entryid_.at(arg_idxes[i]);
-    auto store_id = vstorage[entry_id];
-    auto& op_inputs = storeid2opinput_[store_id];
-    for(auto& pair : op_inputs) {
+    for(auto& pair : arg2opinput_[arg_idxes[i]]) {
       op_execs[pair.first]->SetInputTBlob(pair.second, blobs[i]);
     }
   }
@@ -964,21 +982,7 @@ void LiteExecutor::SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob
 
 
 void LiteExecutor::SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs) {
-  // get the graph
-  const auto& idx = graph_.indexed_graph();
-  // get the storage
-  const auto& vstorage = graph_.GetAttr<StorageVector>("storage_id");
-  // get op_execs 
-  auto& op_execs = graph_.GetAttr<OpExecVector>("op_execs");
-
-  for(size_t i = 0;i < out_idxes.size();i ++) {
-    auto entry_id = output2entryid_.at(out_idxes[i]);
-    auto store_id = vstorage[entry_id];
-    auto& op_outputs = storeid2opoutput_[store_id];
-    for(auto& pair : op_outputs) {
-      op_execs[pair.first]->SetOutputTBlob(pair.second, blobs[i]);
-    }
-  }
+  // TODO
 }
 
 
