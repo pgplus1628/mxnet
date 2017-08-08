@@ -104,8 +104,8 @@ class Executor {
    * (pin) 
    * Set argument and output TBlob 
    */
-  virtual void SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) ;
-  virtual void SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs);
+  virtual void SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) = 0;
+  virtual void SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs) = 0;
 
 };  // class executor
 }  // namespace mxnet

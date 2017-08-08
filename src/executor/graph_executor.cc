@@ -910,6 +910,17 @@ GraphExecutor::CachedSegOpr GraphExecutor::CreateCachedSegOpr(size_t topo_start,
       PROFILER_MESSAGE(p_opr_name));
   return ret;
 }
+
+
+void GraphExecutor::SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) {
+  LOG(FATAL) << " THIS SHOULD NEVER BE CALLED! " ;
+}
+
+
+void GraphExecutor::SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs) {
+  LOG(FATAL) << " THIS SHOULD NEVER BE CALLED! " ;
+}
+
 }  // namespace exec
 
 /*
