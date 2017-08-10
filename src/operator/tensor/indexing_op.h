@@ -667,6 +667,115 @@ void OneHotOpForward(const nnvm::NodeAttrs& attrs,
   });
 }
 
+/*
+ * (pin) MultiGather Operator
+ * If we are gathering from M ndarrays, the input will be std::vector<TBlob> with size of 2.
+ * inputs[0] is the index ndarray
+ * inputs[1] is the address array of ndarrays needs to be gather from
+ */
+
+
+struct MultiGather { 
+  // assume thie idx have been flattened to a 1-D tensor (N,)
+  // assume that out_data and in_data have been flattened to 2-D tensors, (N, M) and (K, M)
+  // M is the number of columns of in_data and out_data, stride
+  // K is the number of rows of in_data
+  // i is the index of out_data
+  // out_data : data pointer to output 
+  // in_data_addr : array of data pointor to input array, size = num request/node
+  // idx : idx array. gather from in_data_addr[i][idx[i]] dimension
+  template<typename DType, typename IType>
+  MSHADOW_XINLINE static void Map(int i, DType* out_data, const DType ** in_data_addr,
+                                  const IType *idx, const int M, const int K) {
+    int row = i/M; // global row
+    if (row >= K) row = K - 1;
+    int r = static_cast<int>(idx[row]); // row in in_data
+    DType* in_data = in_data_addr[row]; // in_data
+    out_data[i] = in_data[r * M + i % M];
+  }
+};
+
+struct MultiGatherParam : public dmlc::Parameter<MultiGatherParam> {
+  int axis;
+  DMLC_DECLARE_PARAMETER(MultiGatherParam) {
+    DMLC_DECLARE_FIELD(axis)
+    .set_lower_bound(0)
+    .set_default(0)
+    .describe("The axis of input array to be taken. Currently only support axis = 0");
+  }
+};
+
+template<typename PType>
+inline void MultiGatherParamParser(nnvm::NodeAttrs * attrs) { 
+    PType param;
+    param.Init(attrs->dict);
+    if (param.axis != 0) {
+        LOG(FATAL) << "Axis other than 0 currently not supported.";
+    }
+}
+
+/*
+ * Notice thie output shape will be the number of samples in batch, 
+ * Not the system materialized batch size in deepinfer.
+ * Also, since in deepinfer it will allocate the input and output for this operator,
+ * So, This function should never be called in deepinfer.
+ */
+inline bool MultiGatherOpShape(const nnvm::NodeAttrs& attrs,
+                               std::vector<TShape> *in_attrs,
+                               std::vector<TShape> *out_attrs) {
+  LOG(FATAL) << " This should never be called in deepinfer";
+  return true;
+}
+
+inline bool MultiGatherOpType(const nnvm::NodeAttrs& attrs,
+                              std::vector<int> * in_attrs,
+                              std::vector<int> * out_attrs) {
+  LOG(FATAL) << " This should never be called in deepinfer! " ; 
+  return false;
+}
+
+
+/*
+ * inputs[0] : index array
+ * inputs[1] : address array of ndarrays needs to gather from
+ * inputs[2] : one of the TBlob to gather from, 
+ * outputs[0] : output ndarray
+ */
+template<typename xpu>
+void MultiGatherOpForward(const nnvm::NodeAttrs& attrs,
+                          const OpContext& ctx,
+                          const std::vector<TBlob>& inputs,
+                          const std::vector<OpReqType>& req, // FIXME what this suppose to be
+                          const std::vector<TBlob>& outputs) {
+  using namespace mxnet_op;
+  CHECK_EQ(outputs.size(), 1U);
+
+  int K = inputs[0].shape_;
+  int M = ; // TODO
+  const TShape& idxshape = inputs[0].shape_;
+
+  Stream<xpu> *s = ctx.get_stream<xpu>();
+  MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {  // output data type
+    MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, IType, {  // index data type
+      Kernel<MultiGather, xpu>::Launch(s, oshape.Size(), //TODO 
+                                outputs[take_::kOut].dptr<DType>(),
+                                inputs[take_::kArr].dptr<DType>(),
+                                inputs[take_::kIdx].dptr<IType>(),
+                                oshape.Size()/idxshape.Size(), arrshape[0]);
+    });
+  });
+}
+
+template<typename xpu>
+void MultiGatherOpBackward(const nnvm::NodeAttrs& attrs,
+                    const OpContext& ctx,
+                    const std::vector<TBlob>& inputs,
+                    const std::vector<OpReqType>& req,
+                    const std::vector<TBlob>& outputs) {
+  LOG(FATAL) << " This should never be called in deepinfer ";
+}
+
+
 }  // namespace op
 }  // namespace mxnet
 #ifdef __CUDACC__
