@@ -86,8 +86,8 @@ GatherExecutor::~GatherExecutor() {
 
 void GatherExecutor::Init(Context& ctx) {
   ctx_ = ctx;
-  idx_ = NDArray(TShape({1,1}), ctx_, false,  kInt32);
-  addr_ = NDArray(TShape({1,1}), ctx_, false, kInt64);
+  //idx_ = NDArray(TShape({1,1}), ctx_, false,  kInt32);
+  //addr_ = NDArray(TShape({1,1}), ctx_, false, kInt64);
 
   std::string op_name = "multi_gather";
   op_ = nnvm::Op::Get(op_name);
@@ -118,7 +118,6 @@ void GatherExecutor::Init(Context& ctx) {
 
 void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idxes, NDArray& output){ 
   
-  size_t gather_num = idxes.size();
   auto& ishape = inputs[0].shape();
   int M = ishape.Size() / ishape[0];
   // 0. Set Node Attrs with M and K , M = scalars[0] TODO check int to double safety
@@ -126,12 +125,17 @@ void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idx
   op_exec_->SetAttrScalar(s);
 
   // 1. copy idx and addr to device TODO if async, need callback to release memory
-  idx_.SyncCopyFromCPU(static_cast<void*>(idxes.data()), idxes.size() * sizeof(size_t));
+  // TODO avoid mem allocation in critical path, allocate tblob and then passing
+  // with the shape
+  idx_ = NDArray(TShape({idxes.size()}), ctx_, false,  kInt32);
+  addr_ = NDArray(TShape({idxes.size()}), ctx_, false, kInt64);
+
+  idx_.SyncCopyFromCPU(static_cast<void*>(idxes.data()), idxes.size());
   std::vector<void*> addr;
   for(auto &nd : inputs) {
     addr.push_back(nd.data().dptr_);
   }
-  addr_.SyncCopyFromCPU(static_cast<void*>(addr.data()), addr.size() * sizeof(void*));
+  addr_.SyncCopyFromCPU(static_cast<void*>(addr.data()), addr.size());
 
   // 3. revoke gather kernel
   // setup exec, input : [idx_, addr_] output : output
