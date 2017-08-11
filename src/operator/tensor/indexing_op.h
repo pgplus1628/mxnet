@@ -685,12 +685,12 @@ struct MultiGather {
   // in_data_addr : array of data pointor to input array, size = num request/node
   // idx : idx array. gather from in_data_addr[i][idx[i]] dimension
   template<typename DType, typename IType>
-  MSHADOW_XINLINE static void Map(int i, DType* out_data, const DType ** in_data_addr,
+  MSHADOW_XINLINE static void Map(int i, DType* out_data, const kInt64* in_data_addr,
                                   const IType *idx, const int M, const int K) {
     int row = i/M; // global row
     if (row >= K) row = K - 1;
     int r = static_cast<int>(idx[row]); // row in in_data
-    DType* in_data = in_data_addr[row]; // in_data
+    DType* in_data = reinterpret_cast<DType*>(in_data_addr[row]); // in_data
     out_data[i] = in_data[r * M + i % M];
   }
 };
@@ -750,6 +750,7 @@ void MultiGatherOpForward(const nnvm::NodeAttrs& attrs,
   using namespace mxnet_op;
   CHECK_EQ(outputs.size(), 1U);
   CHECK_EQ(inputs.size(), 2U);
+  CHECK_EQ(inputs[1].type_flat_, kInt64);
 
   int K = inputs[0].shape_[0];
   int M = static_cast<int>(attrs.scalars[0]); 
@@ -760,7 +761,7 @@ void MultiGatherOpForward(const nnvm::NodeAttrs& attrs,
     MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, IType, {  // index data type
       Kernel<MultiGather, xpu>::Launch(s, K * M, //TODO 
                                 outputs[0].dptr<DType>(),
-                                inputs[1].dptr<DType*>(),
+                                inputs[1].dptr<kInt64>(),
                                 inputs[0].dptr<IType>(),
                                 M, K);
     });
