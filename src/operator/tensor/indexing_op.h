@@ -749,19 +749,20 @@ void MultiGatherOpForward(const nnvm::NodeAttrs& attrs,
                           const std::vector<TBlob>& outputs) {
   using namespace mxnet_op;
   CHECK_EQ(outputs.size(), 1U);
+  CHECK_EQ(inputs.size(), 2U);
 
-  int K = inputs[0].shape_;
-  int M = ; // TODO
+  int K = inputs[0].shape_[0];
+  int M = static_cast<int>(attrs.scalars[0]); 
   const TShape& idxshape = inputs[0].shape_;
 
   Stream<xpu> *s = ctx.get_stream<xpu>();
   MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {  // output data type
     MSHADOW_TYPE_SWITCH(inputs[0].type_flag_, IType, {  // index data type
-      Kernel<MultiGather, xpu>::Launch(s, oshape.Size(), //TODO 
-                                outputs[take_::kOut].dptr<DType>(),
-                                inputs[take_::kArr].dptr<DType>(),
-                                inputs[take_::kIdx].dptr<IType>(),
-                                oshape.Size()/idxshape.Size(), arrshape[0]);
+      Kernel<MultiGather, xpu>::Launch(s, K * M, //TODO 
+                                outputs[0].dptr<DType>(),
+                                inputs[1].dptr<DType*>(),
+                                inputs[0].dptr<IType>(),
+                                M, K);
     });
   });
 }

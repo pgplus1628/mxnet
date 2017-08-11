@@ -735,6 +735,37 @@ void NDArray::SyncCopyFromCPU(const void *data, size_t size) const {
   }
 }
 
+void NDArray::ASyncCopyFromCPU(const void *data, size_t size) const {
+  TShape dshape = this->shape();
+  CHECK_EQ(dshape.Size(), size)
+      << "Memory size do not match";
+  TBlob src((void*)data, dshape, cpu::kDevMask, this->dtype_); // NOLINT(*)
+
+  if (this->ctx().dev_mask() == cpu::kDevMask) {
+    this->WaitToWrite();
+    RunContext rctx;
+    rctx.stream = nullptr;
+    TBlob dst = this->data();
+    ndarray::Copy<cpu, cpu>(src, &dst, Context::CPU(), Context::CPU(), rctx);
+  } else {
+#if MXNET_USE_CUDA
+    Engine::Get()->PushSync([&](RunContext rctx) {
+        TBlob dst = this->data();
+        ndarray::Copy<cpu, gpu>(src, &dst,
+                                Context::CPU(), this->ctx(), rctx);
+        // Wait GPU kernel to complete
+        rctx.get_stream<gpu>()->Wait();
+      }, this->ctx(), {}, {this->var()},
+      FnProperty::kCopyToGPU, 0, PROFILER_MESSAGE("SyncCopyCPU2GPU"));
+    //this->WaitToRead();
+#else
+    LOG(FATAL) << "GPU is not enabled";
+#endif
+  }
+}
+
+
+
 void NDArray::SyncCopyToCPU(void *data, size_t size) const {
   TShape dshape = this->shape();
   CHECK_EQ(dshape.Size(), size)

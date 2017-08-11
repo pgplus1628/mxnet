@@ -230,5 +230,40 @@ Examples::
 .add_argument("indices", "NDArray-or-Symbol", "array of locations where to set on_value")
 .add_arguments(OneHotParam::__FIELDS__());
 
+
+
+
+
+/*
+ * (pin) MultiGather Operator
+ */
+
+NNVM_REGISTER_OP(multi_gather)
+.describe(R"code( Gather operator takes variable NDArrays as input
+)code" ADD_FILELINE)
+.set_num_inputs(2)
+.set_num_outputs(1)
+.set_attr_parser(MultiGatherParamParser<MultiGatherParam>)
+.set_attr<nnvm::FListInputNames>("FListInputNames",
+  [](const NodeAttrs& attrs) {
+    return std::vector<std::string>{"addrs", "indices"};
+  })
+.set_attr<nnvm::FInferShape>("FInferShape", MultiGatherOpShape)
+.set_attr<nnvm::FInferType>("FInferType", MultiGatherOpType)
+.set_attr<FResourceRequest>("FResourceRequest",
+  [](const NodeAttrs& attrs) {
+    return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
+  })
+.set_attr<FCompute>("FCompute<cpu>", MultiGatherOpForward<cpu>)
+//.set_attr<nnvm::FGradient>("FGradient",
+//  [](const nnvm::NodePtr& n,  const std::vector<nnvm::NodeEntry>& ograds) {
+//    return MakeNonlossGradNode("_backward_take", n, ograds,
+//                               {n->inputs[1]}, n->attrs.dict);
+//  })
+.add_argument("addrs", "NDArray", "NDArray that includes the gather inputs TBlob addrs")
+.add_argument("indices", "NDArray-or-Symbol", "The indices of the values to be extracted.")
+.add_arguments(MultiGatherParam::__FIELDS__());
+
+
 }  // namespace op
 }  // namespace mxnet

@@ -56,6 +56,7 @@ class OpExecutor {
    */
   virtual void SetInputTBlob(size_t idx, TBlob& blob) = 0;
   virtual void SetOutputTBlob(size_t idx, TBlob& blob) = 0;
+  virtual void SetAttrScalar(std::vector<double>& s) = 0;
 };
 
 /*!

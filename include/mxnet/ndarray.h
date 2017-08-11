@@ -266,6 +266,12 @@ class NDArray {
    * \param size the size of the source array, in sizeof(DType) not raw btyes.
    */
   void SyncCopyFromCPU(const void *data, size_t size) const;
+
+  /*
+   * (pin)
+   */
+  void ASyncCopyFromCPU(const void *data, size_t size) const;
+
   /*!
    * \brief Do a synchronize copy to a continugous CPU memory region.
    *
