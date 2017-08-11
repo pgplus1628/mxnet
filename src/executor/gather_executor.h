@@ -36,7 +36,7 @@ using nnvm::Graph;
 class GatherExecutor { 
 public : 
   virtual ~GatherExecutor();
-  void Forward(std::vector<NDArray>& inputs, std::vector<size_t>& idxes, NDArray& output);
+  void Forward(std::vector<NDArray>& inputs, std::vector<int>& idxes, NDArray& output);
 
  // initialized the executor
   void Init(Context& default_ctx);
