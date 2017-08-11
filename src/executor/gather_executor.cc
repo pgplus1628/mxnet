@@ -116,7 +116,7 @@ void GatherExecutor::Init(Context& ctx) {
   // cached_opr, use_vars, mutate_vars will be set when bind new input and output
 }
 
-void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<size_t>& idxes, NDArray& output){ 
+void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idxes, NDArray& output){ 
   
   size_t gather_num = idxes.size();
   auto& ishape = inputs[0].shape();
