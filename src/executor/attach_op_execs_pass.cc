@@ -45,6 +45,10 @@ class ForwardOpExecutor : public OpExecutor {
     out_data_[idx] = blob; 
   }
 
+  void SetAttrScalar(std::vector<double>& s) { 
+    LOG(FATAL) << "THIS SHOULD NEVER BE CALLED.";
+  }
+
   void Setup() override {
     in_data_.clear(); aux_data_.clear();
     for (size_t i = 0; i < in_array.size(); ++i) {
@@ -98,6 +102,10 @@ class BackwardOpExecutor : public OpExecutor {
 
   void SetOutputTBlob(size_t idx, TBlob& blob) {
     out_data_[idx] = blob; 
+  }
+
+  void SetAttrScalar(std::vector<double>& s) { 
+    LOG(FATAL) << "THIS SHOULD NEVER BE CALLED.";
   }
 
   void Setup() override {
@@ -174,6 +182,10 @@ class FComputeExecutor : public OpExecutor {
   void SetOutputTBlob(size_t idx, TBlob& blob) {
     VLOG(1) << "FComputeOpExecutor SetOutputTBlob " << idx << " / " << out_data_.size();
     out_data_[idx] = blob; 
+  }
+
+  void SetAttrScalar(std::vector<double>& s) { 
+    LOG(FATAL) << "THIS SHOULD NEVER BE CALLED.";
   }
 
   void Setup() override {

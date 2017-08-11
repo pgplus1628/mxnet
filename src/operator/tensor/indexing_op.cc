@@ -11,6 +11,7 @@ namespace op {
 DMLC_REGISTER_PARAMETER(EmbeddingParam);
 DMLC_REGISTER_PARAMETER(TakeParam);
 DMLC_REGISTER_PARAMETER(OneHotParam);
+DMLC_REGISTER_PARAMETER(MultiGatherParam);
 
 NNVM_REGISTER_OP(Embedding)
 .describe(R"code(Maps integer indices to vector representations (embeddings).

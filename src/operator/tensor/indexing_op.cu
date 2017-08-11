@@ -27,7 +27,7 @@ NNVM_REGISTER_OP(one_hot)
 .set_attr<FCompute>("FCompute<gpu>", OneHotOpForward<gpu>);
 
 NNVM_REGISTER_OP(multi_gather)
-.set_attr(FCompute)("FCompute<gpu>", MultiGatherOpForwrad<gpu>);
+.set_attr<FCompute>("FCompute<gpu>", MultiGatherOpForward<gpu>);
 
 
 }  // namespace op

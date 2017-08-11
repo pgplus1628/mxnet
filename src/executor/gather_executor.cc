@@ -1,6 +1,9 @@
 #include <mxnet/base.h>
+#include <mxnet/op_attr_types.h>
 #include <nnvm/graph.h>
 #include <nnvm/pass_functions.h>
+#include <nnvm/graph_attr_types.h>
+#include <mshadow/base.h>
 #include <vector>
 #include <algorithm>
 
@@ -15,6 +18,9 @@
 
 namespace mxnet { 
 namespace exec { 
+
+using mshadow::kInt32;
+using mshadow::kInt64;
 
 /*
  * Just rename FComputeExecutor to GatherOpExecutor
@@ -53,12 +59,13 @@ class GatherOpExecutor : public OpExecutor {
     std::transform(in_array.begin(), in_array.end(), in_data_.begin(), get_blob);
     std::transform(out_array.begin(), out_array.end(), out_data_.begin(), get_blob);
   }
+
   Operator::ExecType exec_type() const override {
     return Operator::kSync;
   }
+
   explicit GatherOpExecutor(FCompute fcompute, const NodeAttrs& attrs)
-      : fcompute_(fcompute), attrs_(attrs) {
-  }
+      : fcompute_(fcompute), attrs_(attrs) {}
 
  private:
   FCompute fcompute_;
@@ -72,10 +79,8 @@ class GatherOpExecutor : public OpExecutor {
  */
 
 GatherExecutor::~GatherExecutor() {
-  for (auto& N : op_nodes_) {
-    if (n.cached_opr != nullptr) {
-      Engine::Get()->DeleteOperator(n.cached_opr);
-    }
+  if (op_node_.cached_opr != nullptr) {
+    Engine::Get()->DeleteOperator(op_node_.cached_opr);
   }
 }
 
@@ -104,29 +109,29 @@ void GatherExecutor::Init(Context& ctx) {
 
   // init cached OpNode
   char *p_opr_name = new char[op_name.size() + 1];
-  memcopy(p_opr_name, op_name.c_str(), op_name.size() + 1);
+  memcpy(p_opr_name, op_name.c_str(), op_name.size() + 1);
   op_node_.opr_name = p_opr_name;
   op_node_.ctx = ctx_;
   op_node_.exec = op_exec_;
   // cached_opr, use_vars, mutate_vars will be set when bind new input and output
 }
 
-void Forward(std::vector<NDArray>& inputs, std::vector<size_t>& idxes, NDArray& output){ 
+void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<size_t>& idxes, NDArray& output){ 
   
   size_t gather_num = idxes.size();
-  TShape& ishape = inputs[0].shape();
+  auto& ishape = inputs[0].shape();
   int M = ishape.Size() / ishape[0];
   // 0. Set Node Attrs with M and K , M = scalars[0] TODO check int to double safety
   std::vector<double> s(1, (double)(M));
-  op_exec_.SetAttrScalar(s);
+  op_exec_->SetAttrScalar(s);
 
   // 1. copy idx and addr to device TODO if async, need callback to release memory
   idx_.SyncCopyFromCPU(static_cast<void*>(idxes.data()), idxes.size() * sizeof(size_t));
   std::vector<void*> addr;
   for(auto &nd : inputs) {
-    addr.push_back(static_cast<void*>nd.data().dptr());
+    addr.push_back(nd.data().dptr_);
   }
-  addr_.SynCopyFromCPU(static_cast<void*>(addr.data()), addr.size() * sizeof(void*));
+  addr_.SyncCopyFromCPU(static_cast<void*>(addr.data()), addr.size() * sizeof(void*));
 
   // 3. revoke gather kernel
   // setup exec, input : [idx_, addr_] output : output
@@ -141,14 +146,15 @@ void Forward(std::vector<NDArray>& inputs, std::vector<size_t>& idxes, NDArray& 
   std::vector<Engine::VarHandle> use_vars, mutate_vars;
   for(auto& nd : inputs) { use_vars.push_back(nd.var());} 
   mutate_vars.push_back(output.var());
+  auto & op_exec = op_exec_;
   bool is_async = op_exec_->exec_type() == Operator::kAsync;
   bool is_gpu = ctx_.dev_mask() == gpu::kDevMask;
-  auto exec_fun = [op_exec_, is_async, is_gpu]( 
+  auto exec_fun = [op_exec, is_async, is_gpu]( 
     RunContext ctx, Engine::CallbackOnComplete on_complete) {
     if (is_async) {
-      op_exec_->op_ctx.async_on_complete = on_complete;
+      op_exec->op_ctx.async_on_complete = on_complete;
     }
-    op_exec_->Run(ctx);
+    op_exec->Run(ctx);
     // call on complete only if it is async op
     if (!is_async) {
       if (is_gpu) {

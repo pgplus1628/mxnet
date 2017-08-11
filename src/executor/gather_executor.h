@@ -35,8 +35,6 @@ using nnvm::Graph;
 //gather executors
 class GatherExecutor { 
 public : 
-  using Executor::MonitorCallback;
-
   virtual ~GatherExecutor();
   void Forward(std::vector<NDArray>& inputs, std::vector<size_t>& idxes, NDArray& output);
 
@@ -64,7 +62,7 @@ protected :
 
   // operator node
   OpNode op_node_;
-  Op * op_; // the gather op
+  const Op * op_{nullptr}; // the gather op
   std::shared_ptr<OpExecutor> op_exec_;  // attach_op_exec_pass
   Context ctx_;
 
