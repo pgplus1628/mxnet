@@ -6,6 +6,9 @@
 #include <mshadow/base.h>
 #include <vector>
 #include <algorithm>
+#include <cstring>
+
+#include <mxnet/perf-inl.h>
 
 #include "./exec_pass.h"
 #include "./gather_executor.h"
@@ -37,12 +40,12 @@ class GatherOpExecutor : public OpExecutor {
   }
 
   void SetInputTBlob(size_t idx, TBlob& blob) {
-    VLOG(1) << "GatherOpExecutor SetInputTBlob " << idx << " / " << in_data_.size();
+    //VLOG(1) << "GatherOpExecutor SetInputTBlob " << idx << " / " << in_data_.size();
     in_data_[idx] = blob;
   }
 
   void SetOutputTBlob(size_t idx, TBlob& blob) {
-    VLOG(1) << "GatherOpExecutor SetOutputTBlob " << idx << " / " << out_data_.size();
+    //VLOG(1) << "GatherOpExecutor SetOutputTBlob " << idx << " / " << out_data_.size();
     out_data_[idx] = blob;
   }
 
@@ -84,10 +87,14 @@ GatherExecutor::~GatherExecutor() {
   }
 }
 
-void GatherExecutor::Init(Context& ctx) {
+void GatherExecutor::Init(Context& ctx, size_t max_gather) {
   ctx_ = ctx;
-  //idx_ = NDArray(TShape({1,1}), ctx_, false,  kInt32);
-  //addr_ = NDArray(TShape({1,1}), ctx_, false, kInt64);
+  max_gather_ = max_gather;
+  idx_dev_ = NDArray(TShape({max_gather_}), ctx_, false,  kInt32);
+  addr_dev_ = NDArray(TShape({max_gather_}), ctx_, false, kInt64);
+
+  idx_host_ = NDArray(TShape({max_gather_}), Context::CPUPinned(0), false,  kInt32); // pinned 
+  addr_host_ = NDArray(TShape({max_gather_}), Context::CPUPinned(0), false, kInt64); // pinned
 
   std::string op_name = "multi_gather";
   op_ = nnvm::Op::Get(op_name);
@@ -116,33 +123,50 @@ void GatherExecutor::Init(Context& ctx) {
   // cached_opr, use_vars, mutate_vars will be set when bind new input and output
 }
 
+void GatherExecutor::SetHostAddrAndIdx(std::vector<NDArray>& inputs, std::vector<int>& idxes) {
+  int *h_idx = idx_host_.data().dptr<int>();
+  std::memcpy(h_idx, idxes.data(), sizeof(int) * idxes.size());
+  int64_t *h_addr = addr_host_.data().dptr<int64_t>();
+  for (size_t i = 0;i < inputs.size();i ++) { 
+    h_addr[i] = reinterpret_cast<int64_t>(inputs[i].data().dptr_);
+  }
+}
+
+
+
 void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idxes, NDArray& output){ 
-  
+  uint64_t t0, t1, t2, t3, t4, t5;
+
+  CHECK_EQ(inputs.size(), idxes.size());
+  CHECK_LE(inputs.size(), max_gather_);
+
+  t0 = get_time();
   auto& ishape = inputs[0].shape();
   int M = ishape.Size() / ishape[0];
-  // 0. Set Node Attrs with M and K , M = scalars[0] TODO check int to double safety
-  std::vector<double> s(1, (double)(M));
+  int K = inputs.size();
+  // 0. Set Node Attrs with M and K , 
+  // M = scalars[0]   
+  // K = scalars[1]
+  std::vector<double> s {(double)(M), (double)(K)};
   op_exec_->SetAttrScalar(s);
 
-  // 1. copy idx and addr to device TODO if async, need callback to release memory
-  // TODO avoid mem allocation in critical path, allocate tblob and then passing
-  // with the shape
-  idx_ = NDArray(TShape({idxes.size()}), ctx_, false,  kInt32);
-  addr_ = NDArray(TShape({idxes.size()}), ctx_, false, kInt64);
+  SetHostAddrAndIdx(inputs, idxes);
 
-  idx_.SyncCopyFromCPU(static_cast<void*>(idxes.data()), idxes.size());
-  std::vector<void*> addr;
-  for(auto &nd : inputs) {
-    addr.push_back(nd.data().dptr_);
-  }
-  addr_.SyncCopyFromCPU(static_cast<void*>(addr.data()), addr.size());
+  // 1. copy idx and addr to device TODO if async, need callback to release memory
+  t1 = get_time();
+  CopyFromTo(idx_host_, &idx_dev_);
+
+  t2 = get_time();
+  CopyFromTo(addr_host_, &addr_dev_);
+
+  t3 = get_time();
 
   // 3. revoke gather kernel
   // setup exec, input : [idx_, addr_] output : output
   op_exec_->in_array.resize(2); 
   op_exec_->out_array.resize(1);
-  op_exec_->in_array[0] = idx_;
-  op_exec_->in_array[1] = addr_;
+  op_exec_->in_array[0] = idx_dev_;
+  op_exec_->in_array[1] = addr_dev_;
   op_exec_->out_array[0] = output;
   op_exec_->Setup();
 
@@ -178,6 +202,8 @@ void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idx
     PROFILER_MESSAGE(op_node_.opr_name));
   // no need to setup op_node_.mutate_vars and use_vars
 
+  t4 = get_time();
+
   // call engine  to launch kernel
 #if MXNET_USE_PROFILER
   bool profiling = engine::Profiler::Get()->GetState() == engine::Profiler::kRunning;
@@ -185,6 +211,14 @@ void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idx
   bool profiling = false;
 #endif
   Engine::Get()->Push(op_node_.cached_opr, op_node_.ctx, 0, profiling);
+  t5 = get_time();
+
+  LOG(INFO) << " num gather " << idxes.size()
+            << " prepare time " << t1 - t0
+            << " idx time " << t2 - t1
+            << " addr time " << t3 - t2
+            << " setup time " << t4 - t3
+            << " push time " << t5 - t4;
 }
 
 } // namespace exec

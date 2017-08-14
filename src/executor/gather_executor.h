@@ -39,7 +39,7 @@ public :
   void Forward(std::vector<NDArray>& inputs, std::vector<int>& idxes, NDArray& output);
 
  // initialized the executor
-  void Init(Context& default_ctx);
+  void Init(Context& default_ctx, size_t max_gather = 512); // FIXME tune here
 
 protected : 
   // information about operational node
@@ -60,14 +60,21 @@ protected :
     std::vector<Engine::VarHandle> mutate_vars;
   };
 
+  void SetHostAddrAndIdx(std::vector<NDArray>& inputs, std::vector<int>& idxes);
+
   // operator node
   OpNode op_node_;
   const Op * op_{nullptr}; // the gather op
   std::shared_ptr<OpExecutor> op_exec_;  // attach_op_exec_pass
   Context ctx_;
 
-  NDArray idx_; // index array on device 
-  NDArray addr_; // address array on device
+  NDArray idx_dev_; // index array on device 
+  NDArray addr_dev_; // address array on device
+
+  NDArray idx_host_; // index array on host
+  NDArray addr_host_; // address array on host
+
+  size_t max_gather_; // max input to gather from, used to allocate array of idx_ and addr_
 
 
 }; //class GatherExecutor

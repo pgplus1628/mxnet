@@ -756,8 +756,8 @@ void MultiGatherOpForward(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(inputs.size(), 2U);
   CHECK_EQ(inputs[1].type_flag_, kInt64);
 
-  int K = inputs[0].shape_[0];
   int M = static_cast<int>(attrs.scalars[0]); 
+  int K = static_cast<int>(attrs.scalars[1]); 
   const TShape& idxshape = inputs[0].shape_;
 
   Stream<xpu> *s = ctx.get_stream<xpu>();
