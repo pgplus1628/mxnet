@@ -36,12 +36,10 @@ class ForwardOpExecutor : public OpExecutor {
 
   /* (pin) */
   void SetInputTBlob(size_t idx, TBlob& blob) {
-    VLOG(1) << "ForwardOpExecutor SetInputTBlob " << idx << " / " << in_data_.size();
     in_data_[idx] = blob; 
   }
 
   void SetOutputTBlob(size_t idx, TBlob& blob) {
-    VLOG(1) << "ForwardOpExecutor SetOutputTBlob " << idx << " / " << out_data_.size();
     out_data_[idx] = blob; 
   }
 
@@ -175,12 +173,10 @@ class FComputeExecutor : public OpExecutor {
 
   /* (pin) */
   void SetInputTBlob(size_t idx, TBlob& blob) {
-    VLOG(1) << "FComputeOpExecutor SetInputTBlob " << idx << " / " << in_data_.size();
     in_data_[idx] = blob; 
   }
 
   void SetOutputTBlob(size_t idx, TBlob& blob) {
-    VLOG(1) << "FComputeOpExecutor SetOutputTBlob " << idx << " / " << out_data_.size();
     out_data_[idx] = blob; 
   }
 

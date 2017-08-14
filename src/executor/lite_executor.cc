@@ -361,23 +361,18 @@ void LiteExecutor::Init(nnvm::Symbol symbol,
                          const nnvm::NodeEntryMap<NDArray>& feed_dict,
                          const std::vector<NDArray>& out_args) { // (pin)
   CHECK(out_args.size() > 0);
-  VLOG(1) << " LITE INIT 0" ;
   nnvm::Graph g = InitGraph(symbol, default_ctx,
                             ctx_map, in_args, arg_grad_store,
                             grad_req_type, aux_states, feed_dict, out_args);
-  VLOG(1) << " LITE INIT 1" ;
   g.attrs["saved_opr"] = std::make_shared<nnvm::any>(std::move(saved_opr_));
   g = AttachOpExecs(g);
-  VLOG(1) << " LITE INIT 2" ;
   g = AttachOpResources(g);
-  VLOG(1) << " LITE INIT 3" ;
   graph_ = std::move(g);
   if (shared_exec != nullptr) {
     this->InitDataEntryMemory(&(dynamic_cast<LiteExecutor*>(shared_exec)->data_pool_));
   } else {
     this->InitDataEntryMemory(nullptr);
   }
-  VLOG(1) << " LITE INIT 4" ;
   {
     auto& idx = graph_.indexed_graph();
     /*
@@ -396,11 +391,8 @@ void LiteExecutor::Init(nnvm::Symbol symbol,
       head_grad_array_[oid] = data_entry_[idx.entry_id(nid, 0)];
     }
   }
-  VLOG(1) << " LITE INIT 5" ;
   this->InitCachedOps();
-  VLOG(1) << " LITE INIT 6" ;
   this->InitOpSegs();
-  VLOG(1) << " LITE INIT 7" ;
 }
 
 Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
@@ -435,14 +427,12 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
   nnvm::DTypeVector arg_types;
   size_t arg_top = 0, aux_top = 0;
 
-  VLOG(1) << " LITE IG 1 ";
   // initialize entryid2arg_idx_ (pin)
   is_arg_.clear();
   is_out_.clear();
   entryid2argidx_ = std::vector<int>(idx.num_node_entries(), -1);
   entryid2outidx_ = std::vector<int>(idx.num_node_entries(), -1);
 
-  VLOG(1) << " LITE IG 2 ";
   for (size_t i = 0; i < num_forward_inputs_; ++i) {
     const uint32_t nid = idx.input_nodes().at(i);
     if (mutable_nodes.count(nid)) {
@@ -462,22 +452,15 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
     }
   }
 
-  VLOG(1) << " LITE IG 3 ";
   // output (pin) TODO double check the order
   CHECK_EQ(num_forward_outputs_, out_args.size());
   for(size_t i = 0;i < num_forward_outputs_;i ++) { 
-    VLOG(1) << " LITE F -1 ";
     auto eid = idx.entry_id(idx.outputs()[i]);
-    VLOG(1) << " LITE F 0 ";
     data_entry_[eid] = out_args[i];
-    VLOG(1) << " LITE F 1 ";
     entryid2outidx_[eid] = i;
-    VLOG(1) << " LITE F 2 ";
     is_out_.insert(eid);
-    VLOG(1) << " LITE F 3 ";
   }
 
-  VLOG(1) << " LITE IG 4 ";
   // gradient 
   for (size_t j = num_forward_outputs_; j < idx.outputs().size(); ++j) {
     data_entry_[idx.entry_id(idx.outputs()[j])]
@@ -503,7 +486,6 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
       arg_storage_id[eid] = kExternalStorageID;
     }
 
-    VLOG(1) << " LITE IG 5 ";
     // (pin) set output as external storage
     for (size_t i = 0;i < num_forward_outputs_;i ++) {
       auto eid = idx.entry_id(idx.outputs()[i]);
@@ -514,7 +496,6 @@ Graph LiteExecutor::InitGraph(nnvm::Symbol symbol,
     g = nnvm::ApplyPass(g, "PlanMemory");
   }
   g = DetectInplaceAddTo(g); // (pin) TODO double check the correctness here.
-  VLOG(1) << " LITE IG 6 ";
   return g;
 }
 
@@ -648,10 +629,12 @@ void LiteExecutor::InitCachedOps() {
   const auto& addto_entry = graph_.GetAttr<std::vector<int> >("addto_entry");
   const auto& skip_plus_node = graph_.GetAttr<std::vector<int> >("skip_plus_node");
 
+  /*
   for(size_t i = 0;i < vstorage.size();i ++) {
     VLOG(1) << i << " vstorage "  << vstorage[i]
                  << " vstorage_inplace " << vstorage_inplace[i];
   }
+  */
 
   // (pin)
   arg2opinput_.resize(is_arg_.size()); 
@@ -1027,10 +1010,8 @@ LiteExecutor::CachedSegOpr LiteExecutor::CreateCachedSegOpr(size_t topo_start, s
 void LiteExecutor::SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob>& blobs) {
   // get the graph
   const auto& idx = graph_.indexed_graph();
-  VLOG(1) << " LITE 1 " ;
   // get op_execs 
   auto& op_execs = graph_.GetAttr<OpExecVector>("op_execs");
-  VLOG(1) << " LITE 2 " ;
 
   for(size_t i = 0;i < arg_idxes.size();i ++) {
     for(auto& pair : arg2opinput_[arg_idxes[i]]) {
@@ -1043,10 +1024,8 @@ void LiteExecutor::SetArgTBlob(std::vector<size_t>& arg_idxes, std::vector<TBlob
 void LiteExecutor::SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<TBlob>& blobs) {
   // get the graph
   const auto& idx = graph_.indexed_graph();
-  VLOG(1) << " LITE OUT 1 " ;
   // get op_execs 
   auto& op_execs = graph_.GetAttr<OpExecVector>("op_execs");
-  VLOG(1) << " LITE OUT 2 " ;
 
   for(size_t i = 0;i < out_idxes.size();i ++) {
     for(auto& pair : out2opoutput_[out_idxes[i]]) {
