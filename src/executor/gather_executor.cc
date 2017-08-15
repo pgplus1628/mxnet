@@ -140,7 +140,7 @@ void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idx
   CHECK_EQ(inputs.size(), idxes.size());
   CHECK_LE(inputs.size(), max_gather_);
 
-  t0 = get_time();
+  //t0 = get_time();
   auto& ishape = inputs[0].shape();
   int M = ishape.Size() / ishape[0];
   int K = inputs.size();
@@ -153,13 +153,13 @@ void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idx
   SetHostAddrAndIdx(inputs, idxes);
 
   // 1. copy idx and addr to device TODO if async, need callback to release memory
-  t1 = get_time();
+  //t1 = get_time();
   CopyFromTo(idx_host_, &idx_dev_);
 
-  t2 = get_time();
+  //t2 = get_time();
   CopyFromTo(addr_host_, &addr_dev_);
 
-  t3 = get_time();
+  //t3 = get_time();
 
   // 3. revoke gather kernel
   // setup exec, input : [idx_, addr_] output : output
@@ -173,6 +173,8 @@ void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idx
   // setup exec vars
   std::vector<Engine::VarHandle> use_vars, mutate_vars;
   for(auto& nd : inputs) { use_vars.push_back(nd.var());} 
+  use_vars.push_back(idx_dev_.var());
+  use_vars.push_back(addr_dev_.var());
   mutate_vars.push_back(output.var());
   auto & op_exec = op_exec_;
   bool is_async = op_exec_->exec_type() == Operator::kAsync;
@@ -202,7 +204,7 @@ void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idx
     PROFILER_MESSAGE(op_node_.opr_name));
   // no need to setup op_node_.mutate_vars and use_vars
 
-  t4 = get_time();
+  //t4 = get_time();
 
   // call engine  to launch kernel
 #if MXNET_USE_PROFILER
@@ -211,14 +213,14 @@ void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idx
   bool profiling = false;
 #endif
   Engine::Get()->Push(op_node_.cached_opr, op_node_.ctx, 0, profiling);
-  t5 = get_time();
+  //t5 = get_time();
 
-  LOG(INFO) << " num gather " << idxes.size()
-            << " prepare time " << t1 - t0
-            << " idx time " << t2 - t1
-            << " addr time " << t3 - t2
-            << " setup time " << t4 - t3
-            << " push time " << t5 - t4;
+  //LOG(INFO) << " num gather " << idxes.size()
+  //          << " prepare time " << t1 - t0
+  //          << " idx time " << t2 - t1
+  //          << " addr time " << t3 - t2
+  //          << " setup time " << t4 - t3
+  //          << " push time " << t5 - t4;
 }
 
 } // namespace exec
