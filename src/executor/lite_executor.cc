@@ -980,7 +980,7 @@ LiteExecutor::CachedSegOpr LiteExecutor::CreateCachedSegOpr(size_t topo_start, s
       RunContext ctx, Engine::CallbackOnComplete on_complete) {
     // Run all opr in the sub-graph
     for (auto &exec : exec_list) {
-      //exec->Run(ctx); // (pin) debug donothing
+      exec->Run(ctx); // (pin) debug donothing
     }
     if (is_gpu) {
 #if MXNET_USE_CUDA

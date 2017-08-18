@@ -117,8 +117,11 @@ void GatherExecutor::Init(Context& ctx, size_t max_gather) {
   attrs.op = op_;
   attrs.name = op_name;
   op_exec_ = std::make_shared<GatherOpExecutor>(fcompute, attrs);
-  op_exec_->SetInputTBlob(0, idx_dev_.data());
-  op_exec_->SetInputTBlob(1, addr_dev_.data());
+  TBlob idx_blob = idx_dev_.data();
+  TBlob addr_blob = addr_dev_.data();
+
+  op_exec_->SetInputTBlob(0, idx_blob);
+  op_exec_->SetInputTBlob(1, addr_blob);
  
   // init cached OpNode
   char *p_opr_name = new char[op_name.size() + 1];
@@ -132,14 +135,16 @@ void GatherExecutor::Init(Context& ctx, size_t max_gather) {
 
   bool is_async = op_exec_->exec_type() == Operator::kAsync;
   bool is_gpu = ctx_.dev_mask() == gpu::kDevMask;
-  auto exec_fun = [op_exec, is_async, is_gpu]( 
+  auto & op_exec = op_exec_;
+  //auto exec_fun = [op_exec, is_async, is_gpu]( 
+  auto exec_fun = [&]( 
     RunContext ctx, Engine::CallbackOnComplete on_complete) {
     if (is_async) {
       op_exec->op_ctx.async_on_complete = on_complete;
     }
-    //CopyFromToAsync(idx_host_, &idx_dev_);
-    //CopyFromToAsync(addr_host_, &addr_dev_);
-    //op_exec->Run(ctx); // (pin)
+    CopyFromToAsync(idx_host_, &idx_dev_);
+    CopyFromToAsync(addr_host_, &addr_dev_);
+    op_exec->Run(ctx); // (pin)
     // call on complete only if it is async op
     if (!is_async) {
       if (is_gpu) {
@@ -187,7 +192,8 @@ void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idx
   // set input
   SetHostAddrAndIdx(inputs, idxes);
   // set output
-  op_exec_->SetOutputTBlob(0, output.data());
+  TBlob out_blob = output.data();
+  op_exec_->SetOutputTBlob(0, out_blob);
 
   // call engine  to launch kernel
 #if MXNET_USE_PROFILER
