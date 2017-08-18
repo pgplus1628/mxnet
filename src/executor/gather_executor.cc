@@ -154,10 +154,12 @@ void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idx
 
   // 1. copy idx and addr to device TODO if async, need callback to release memory
   //t1 = get_time();
-  CopyFromTo(idx_host_, &idx_dev_);
+  //CopyFromTo(idx_host_, &idx_dev_);
+  //CopyFromToAsync(idx_host_, &idx_dev_);
 
   //t2 = get_time();
-  CopyFromTo(addr_host_, &addr_dev_);
+  //CopyFromTo(addr_host_, &addr_dev_);
+  //CopyFromToAsync(addr_host_, &addr_dev_);
 
   //t3 = get_time();
 
@@ -184,13 +186,13 @@ void GatherExecutor::Forward(std::vector<NDArray>& inputs, std::vector<int>& idx
     if (is_async) {
       op_exec->op_ctx.async_on_complete = on_complete;
     }
-    op_exec->Run(ctx);
+    //op_exec->Run(ctx); // (pin)
     // call on complete only if it is async op
     if (!is_async) {
       if (is_gpu) {
       #if MXNET_USE_CUDA
         // Wait GPU Kernel to Finish.
-        ctx.get_stream<gpu>()->Wait();
+        //ctx.get_stream<gpu>()->Wait(); // (pin) do not wait
       #else
         LOG(FATAL) << MXNET_GPU_NOT_ENABLED_ERROR;
       #endif

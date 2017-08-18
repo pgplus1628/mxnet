@@ -754,7 +754,7 @@ void LiteExecutor::InitCachedOps() {
         if (is_gpu) {
         #if MXNET_USE_CUDA
           // Wait GPU kernel to finish.
-          ctx.get_stream<gpu>()->Wait();
+          //ctx.get_stream<gpu>()->Wait(); //(pin) do not wait
         #else
           LOG(FATAL) << MXNET_GPU_NOT_ENABLED_ERROR;
         #endif
@@ -980,12 +980,12 @@ LiteExecutor::CachedSegOpr LiteExecutor::CreateCachedSegOpr(size_t topo_start, s
       RunContext ctx, Engine::CallbackOnComplete on_complete) {
     // Run all opr in the sub-graph
     for (auto &exec : exec_list) {
-      exec->Run(ctx);
+      //exec->Run(ctx); // (pin) debug donothing
     }
     if (is_gpu) {
 #if MXNET_USE_CUDA
       // Wait GPU kernel to finish.
-      ctx.get_stream<gpu>()->Wait();
+      //ctx.get_stream<gpu>()->Wait(); //(pin) do not wait
 #else
       LOG(FATAL) << MXNET_GPU_NOT_ENABLED_ERROR;
 #endif

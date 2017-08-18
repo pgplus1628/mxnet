@@ -439,6 +439,10 @@ class NDArray {
  */
 void CopyFromTo(const NDArray &from, NDArray *to, int priority = 0);
 
+/*
+ * (pin) async copy from to 
+ */
+void CopyFromToAsync(const NDArray &from, NDArray *to, int priority = 0);
 
 /*!
  * \brief Perform elementwise sum over each data from source, store result into out.

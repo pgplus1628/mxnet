@@ -355,6 +355,77 @@ void CopyFromTo(const NDArray &from, NDArray *to, int priority) {
   }
 }
 
+/*
+ * (pin) Do not wait
+ */
+void CopyFromToAsync(const NDArray &from, NDArray *to, int priority) {
+  if (from.var() == to->var()) {
+    // skip to copy to itself
+    return;
+  }
+  CHECK(from.shape() == to->shape())
+      << "operands shape mismatch"
+      << "from.shape = " << from.shape() << " to.shape=" << to->shape();
+  CHECK(from.shape().ndim() != 0)
+      << "source operands have zero dimension shape";
+  // important: callback must always capture by value
+  NDArray ret = *to;
+  int a = from.ctx().dev_mask();
+  int b = to->ctx().dev_mask();
+
+  std::vector<Engine::VarHandle> const_vars;
+  if (from.var() != ret.var()) const_vars.push_back(from.var());
+
+  if (a == cpu::kDevMask && b == cpu::kDevMask) {
+    Engine::Get()->PushSync([from, ret](RunContext ctx) {
+        TBlob tmp = ret.data();
+        ndarray::Copy<cpu, cpu>(from.data(), &tmp,
+                                from.ctx(), ret.ctx(), ctx);
+      }, from.ctx(), const_vars, {ret.var()},
+      FnProperty::kNormal, priority, PROFILER_MESSAGE("CopyCPU2CPU"));
+  } else {
+#if MXNET_USE_CUDA
+    if (a == cpu::kDevMask && b == gpu::kDevMask) {
+      Engine::Get()->PushSync([from, ret](RunContext ctx) {
+          TBlob tmp = ret.data();
+          ndarray::Copy<cpu, gpu>(from.data(), &tmp,
+                                  from.ctx(), ret.ctx(), ctx);
+          // Wait GPU kernel to complete
+          //ctx.get_stream<gpu>()->Wait();
+        }, ret.ctx(), const_vars, {ret.var()},
+        FnProperty::kCopyToGPU, priority, PROFILER_MESSAGE("CopyCPU2GPU"));
+    } else if (a == gpu::kDevMask && b == cpu::kDevMask) {
+      Engine::Get()->PushSync([from, ret](RunContext ctx) {
+          TBlob tmp = ret.data();
+          ndarray::Copy<gpu, cpu>(from.data(), &tmp,
+                                  from.ctx(), ret.ctx(), ctx);
+          // Wait GPU kernel to complete
+          //ctx.get_stream<gpu>()->Wait();
+        }, from.ctx(), const_vars, {ret.var()},
+        FnProperty::kCopyFromGPU, priority, PROFILER_MESSAGE("CopyGPU2CPU"));
+    } else if (a == gpu::kDevMask && b == gpu::kDevMask) {
+      Engine::Get()->PushSync([from, ret](RunContext ctx) {
+          TBlob tmp = ret.data();
+          ndarray::Copy<gpu, gpu>(from.data(), &tmp,
+                                  from.ctx(), ret.ctx(), ctx);
+          // Wait GPU kernel to complete
+          //ctx.get_stream<gpu>()->Wait();
+        }, from.ctx(), const_vars, {ret.var()},
+        from.dtype() != ret.dtype() ? FnProperty::kNormal : FnProperty::kCopyFromGPU,
+        priority, PROFILER_MESSAGE("CopyGPU2GPU"));
+    } else {
+      LOG(FATAL) << "unknown device mask";
+    }
+#else
+    LOG(FATAL) << MXNET_GPU_NOT_ENABLED_ERROR;
+#endif
+  }
+}
+
+
+
+
+
 void ElementwiseSum(const std::vector<NDArray> &source, NDArray *out, int priority) {
   std::vector<Engine::VarHandle> const_vars;
   const_vars.reserve(source.size());
