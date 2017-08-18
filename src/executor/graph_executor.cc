@@ -923,7 +923,6 @@ void GraphExecutor::SetOutputTBlob(std::vector<size_t>& out_idxes, std::vector<T
 
 }  // namespace exec
 
-/*
 Executor *Executor::Bind(nnvm::Symbol symbol,
                          const Context& default_ctx,
                          const std::map<std::string, Context>& group2ctx,
@@ -938,5 +937,4 @@ Executor *Executor::Bind(nnvm::Symbol symbol,
              reinterpret_cast<Executor*>(shared_exec));
   return exec;
 }
-*/
 }  // namespace mxnet
