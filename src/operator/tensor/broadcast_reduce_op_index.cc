@@ -9,6 +9,44 @@ namespace mxnet {
 namespace op {
 DMLC_REGISTER_PARAMETER(PickParam);
 
+
+/*
+ * (pin) argmax2d 
+ */
+NNVM_REGISTER_OP(argmax2d)
+.describe(R"code(Returns argmax indices of each channel from the input array.
+
+The result will be an NDArray of shape (batch_size,).
+
+We assume the first dimension is the batch dimension, and reduction happens in the second dimension.
+
+In case of multiple occurrences of the maximum values, the indices corresponding to the first occurrence
+are returned.
+
+Examples::
+
+  x = [[ 0.,  1.,  2.],
+       [ 3.,  4.,  5.]]
+
+  argmax2d(x) = [ 2.,  2.]
+
+)code" ADD_FILELINE)
+.set_num_inputs(1)
+.set_num_outputs(1)
+.set_attr_parser([](NodeAttrs* attrs) {
+    ReduceAxisParam param;
+    param.axis = 1;
+    param.keepdims = false;
+    attrs->parsed = param;
+  })
+.set_attr<nnvm::FInferShape>("FInferShape", ReduceAxisShape)
+.set_attr<nnvm::FInferType>("FInferType", ElemwiseType<1, 1>)
+.set_attr<FCompute>("FCompute<cpu>", SearchAxisCompute<cpu, mshadow::red::maximum>) // Just use the cpu code of argmax_channel
+.add_argument("data", "NDArray-or-Symbol", "The input array");
+
+
+
+
 MXNET_OPERATOR_REGISTER_REDUCE_AXIS(argmax)
 .describe(R"code(Returns indices of the maximum values along an axis.
 
