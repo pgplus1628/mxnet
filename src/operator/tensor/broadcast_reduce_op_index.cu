@@ -91,7 +91,8 @@ void Argmax2DOpCUDA(const nnvm::NodeAttrs& attrs,
   using namespace mxnet_op;
   CHECK_EQ(inputs.size(), 1U);
   CHECK_EQ(outputs.size(), 1U);
-  CHECK_EQ(outputs[0].type_flag_, mshadow::kInt32) << " index should be type of int32";
+  //CHECK_EQ(outputs[0].type_flag_, mshadow::kInt32) << " index should be type of int32";
+  CHECK_EQ(outputs[0].type_flag_, mshadow::kFloat32) << " index should be type of float32";
 
   CHECK_EQ(inputs[0].shape_.ndim(), 2) << " Currently only support 2d reduction.";
 
@@ -128,6 +129,12 @@ NNVM_REGISTER_OP(pick)
 
 NNVM_REGISTER_OP(_backward_pick)
 .set_attr<FCompute>("FCompute<gpu>", PickOpBackward<gpu>);
+
+// (pin)
+NNVM_REGISTER_OP(argmax2d)
+.set_attr<FCompute>("FCompute<gpu>", Argmax2DOpCUDA);
+
+
 
 }  // namespace op
 }  // namespace mxnet
