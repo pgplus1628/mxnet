@@ -407,7 +407,7 @@ class PackedLSTMCell(BaseRNNCell):
         Jozefowicz et al. 2015 recommends setting this to 1.0
     """
     def __init__(self, num_hidden, prefix='lstm_', params=None, forget_bias=1.0):
-        super(LSTMCell, self).__init__(prefix=prefix, params=params)
+        super(PackedLSTMCell, self).__init__(prefix=prefix, params=params)
 
         self._num_hidden = num_hidden
         self._xW = self.params.get('x2h_weight')
@@ -439,9 +439,9 @@ class PackedLSTMCell(BaseRNNCell):
         #                            name='%sh2h'%name)
         #gates = i2h + h2h
 
-        concat = symbol.concat([inputs, states[0]], dim=1, name='%sconcat'%name)
+        concat_input = symbol.Concat(inputs, states[0], dim=1, name='%sconcat'%name)
         
-        gates = symbol.FullyConnected(data=concat, weight=self._xW, bias=self._xB,
+        gates = symbol.FullyConnected(data=concat_input, weight=self._xW, bias=self._xB,
                                       num_hidden=self._num_hidden*4,
                                       name='%sx2h'%name)
 
