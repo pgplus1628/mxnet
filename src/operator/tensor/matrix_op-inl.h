@@ -384,25 +384,13 @@ void DotForward_(const nnvm::NodeAttrs& attrs,
       outputs[0].get_with_shape<xpu, 2, real_t>(Shape2(m, n), s);
 
     if (param.transpose_a && param.transpose_b) {
-      //ASSIGN_DISPATCH(out, req[0], dot(input0.T(), input1.T()));
-      // (pin) use GEMM
-      mshadow::GEMM<true, true>(out, input0, input1, 1.0f,
-                                (kAddTo == req[0]) ? 1.0f : 0.0f);
+      ASSIGN_DISPATCH(out, req[0], dot(input0.T(), input1.T()));
     } else if (!param.transpose_a && param.transpose_b) {
-      //ASSIGN_DISPATCH(out, req[0], dot(input0, input1.T()));
-      // (pin) use GEMM
-      mshadow::GEMM<false, true>(out, input0, input1, 1.0f,
-                                (kAddTo == req[0]) ? 1.0f : 0.0f);
+      ASSIGN_DISPATCH(out, req[0], dot(input0, input1.T()));
     } else if (param.transpose_a && !param.transpose_b) {
-      //ASSIGN_DISPATCH(out, req[0], dot(input0.T(), input1));
-      // (pin) use GEMM
-      mshadow::GEMM<true, false>(out, input0, input1, 1.0f,
-                                (kAddTo == req[0]) ? 1.0f : 0.0f);
+      ASSIGN_DISPATCH(out, req[0], dot(input0.T(), input1));
     } else {
-      //ASSIGN_DISPATCH(out, req[0], dot(input0, input1));
-      // (pin) use GEMM
-      mshadow::GEMM<false, false>(out, input0, input1, 1.0f,
-                                (kAddTo == req[0]) ? 1.0f : 0.0f);
+      ASSIGN_DISPATCH(out, req[0], dot(input0, input1));
     }
   }
 }

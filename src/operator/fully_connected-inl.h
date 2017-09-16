@@ -78,7 +78,8 @@ class FullyConnectedOp : public Operator {
     Tensor<xpu, 2, DType> wmat = in_data[fullc::kWeight].get<xpu, 2, DType>(s);
     Tensor<xpu, 2, DType> out = out_data[fullc::kOut].get_with_shape<xpu, 2, DType>(
         Shape2(oshape[0], oshape.ProdShape(1, oshape.ndim())), s);
-    out = dot(data, wmat.T());
+    //out = dot(data, wmat.T());
+    out = dot(data, wmat); // (pin) use wmat shape of [input_size, num_hidden] TODO, fix for backward
     if (!param_.no_bias) {
       Tensor<xpu, 1, DType> bias = in_data[fullc::kBias].get<xpu, 1, DType>(s);
       out += repmat(bias, data.size(0));
@@ -176,7 +177,8 @@ class FullyConnectedProp : public OperatorProperty {
     if (dshape.ndim() ==  0) return false;
 
     index_t num_input = dshape.ProdShape(1, dshape.ndim());
-    SHAPE_ASSIGN_CHECK(*in_shape, fullc::kWeight, Shape2(param_.num_hidden, num_input));
+    //SHAPE_ASSIGN_CHECK(*in_shape, fullc::kWeight, Shape2(param_.num_hidden, num_input));
+    SHAPE_ASSIGN_CHECK(*in_shape, fullc::kWeight, Shape2(num_input, param_.num_hidden)); // (pin) use fast wmat
     if (!param_.no_bias) {
       SHAPE_ASSIGN_CHECK(*in_shape, fullc::kBias, Shape1(param_.num_hidden));
     }
