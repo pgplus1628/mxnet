@@ -392,6 +392,8 @@ class PackedLSTMCell(BaseRNNCell):
     """Long-Short Term Memory (LSTM) network cell.
     with packed weights, we pack the i2h and h2h into one weight.
     This cell has the same structure with tensorflow.contrib.rnn.LSTMCell.
+    NO FORGET BIAS. If have forget bias, checkout the shape, it will have
+    a batch dimension after shape infer.
 
     Parameters
     ----------
@@ -416,7 +418,6 @@ class PackedLSTMCell(BaseRNNCell):
         # we add the forget_bias to i2h_bias, this adds the bias to the forget gate activation
         #self._iB = self.params.get('i2h_bias', init=init.LSTMBias(forget_bias=forget_bias))
         #self._hB = self.params.get('h2h_bias')
-        self._iB = self.params.get('i2h_bias', init=init.LSTMBias(forget_bias=forget_bias))
         self._xB = self.params.get('x2h_bias')
 
     @property
@@ -450,12 +451,7 @@ class PackedLSTMCell(BaseRNNCell):
         in_gate = symbol.Activation(slice_gates[0], act_type="sigmoid",
                                     name='%si'%name)
 
-        forget_add_bias = symbol._internal._plus(slice_gates[1], self._iB)
-
-        #forget_gate = symbol.Activation(slice_gates[1], act_type="sigmoid",
-        #                                name='%sf'%name)
-
-        forget_gate = symbol.Activation(forget_add_bias, act_type="sigmoid",
+        forget_gate = symbol.Activation(slice_gates[1], act_type="sigmoid",
                                         name='%sf'%name)
  
         in_transform = symbol.Activation(slice_gates[2], act_type="tanh",
