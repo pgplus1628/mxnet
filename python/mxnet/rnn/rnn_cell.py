@@ -405,6 +405,88 @@ class RNNCell(BaseRNNCell):
         return output, [output]
 
 
+
+# (pin) LSTM
+class PackedLSTMCell(BaseRNNCell):
+    """Long-Short Term Memory (LSTM) network cell.
+    with packed weights, we pack the i2h and h2h into one weight.
+    This cell has the same structure with tensorflow.contrib.rnn.LSTMCell.
+    NO FORGET BIAS. If have forget bias, checkout the shape, it will have
+    a batch dimension after shape infer.
+
+    Parameters
+    ----------
+    num_hidden : int
+        number of units in output symbol
+    prefix : str, default 'lstm_'
+        prefix for name of layers
+        (and name of weight if params is None)
+    params : RNNParams or None
+        container for weight sharing between cells.
+        created if None.
+    forget_bias : bias added to forget gate, default 1.0.
+        Jozefowicz et al. 2015 recommends setting this to 1.0
+    """
+    def __init__(self, num_hidden, prefix='lstm_', params=None, forget_bias=1.0):
+        super(PackedLSTMCell, self).__init__(prefix=prefix, params=params)
+
+        self._num_hidden = num_hidden
+        self._xW = self.params.get('x2h_weight')
+        #self._iW = self.params.get('i2h_weight')
+        #self._hW = self.params.get('h2h_weight')
+        # we add the forget_bias to i2h_bias, this adds the bias to the forget gate activation
+        #self._iB = self.params.get('i2h_bias', init=init.LSTMBias(forget_bias=forget_bias))
+        #self._hB = self.params.get('h2h_bias')
+        self._xB = self.params.get('x2h_bias')
+
+    @property
+    def state_info(self):
+        return [{'shape': (0, self._num_hidden), '__layout__': 'NC'},
+                {'shape': (0, self._num_hidden), '__layout__': 'NC'}]
+
+    @property
+    def _gate_names(self):
+        return ['_i', '_f', '_c', '_o']
+
+    def __call__(self, inputs, states):
+        self._counter += 1
+        name = '%st%d_'%(self._prefix, self._counter)
+        #i2h = symbol.FullyConnected(data=inputs, weight=self._iW, bias=self._iB,
+        #                            num_hidden=self._num_hidden*4,
+        #                            name='%si2h'%name)
+        #h2h = symbol.FullyConnected(data=states[0], weight=self._hW, bias=self._hB,
+        #                            num_hidden=self._num_hidden*4,
+        #                            name='%sh2h'%name)
+        #gates = i2h + h2h
+
+        concat_input = symbol.Concat(inputs, states[0], dim=1, name='%sconcat'%name)
+        
+        gates = symbol.FullyConnected(data=concat_input, weight=self._xW, bias=self._xB,
+                                      num_hidden=self._num_hidden*4,
+                                      name='%sx2h'%name)
+
+        slice_gates = symbol.SliceChannel(gates, num_outputs=4,
+                                          name="%sslice"%name)
+        in_gate = symbol.Activation(slice_gates[0], act_type="sigmoid",
+                                    name='%si'%name)
+
+        forget_gate = symbol.Activation(slice_gates[1], act_type="sigmoid",
+                                        name='%sf'%name)
+ 
+        in_transform = symbol.Activation(slice_gates[2], act_type="tanh",
+                                         name='%sc'%name)
+        out_gate = symbol.Activation(slice_gates[3], act_type="sigmoid",
+                                     name='%so'%name)
+        next_c = symbol._internal._plus(forget_gate * states[1], in_gate * in_transform,
+                                        name='%sstate'%name)
+        next_h = symbol._internal._mul(out_gate, symbol.Activation(next_c, act_type="tanh"),
+                                       name='%sout'%name)
+
+        return next_h, [next_h, next_c]
+
+
+
+
 class LSTMCell(BaseRNNCell):
     """Long-Short Term Memory (LSTM) network cell.
 
