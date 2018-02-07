@@ -230,7 +230,7 @@ class FullyConnectedProp : public OperatorProperty {
       num_input = dshape.ProdShape(1, dshape.ndim());
     }
     //SHAPE_ASSIGN_CHECK(*in_shape, fullc::kWeight, Shape2(param_.num_hidden, num_input));
-    SHAPE_ASSIGN_CHECK(*in_shape, fullc::kWeight, Shape2(param_.num_input, num_hidden));// (pin) use fast wmat shape num_input, num_hidden
+    SHAPE_ASSIGN_CHECK(*in_shape, fullc::kWeight, Shape2(num_input, param_.num_hidden));// (pin) use fast wmat shape num_input, num_hidden
     if (!param_.no_bias) {
       SHAPE_ASSIGN_CHECK(*in_shape, fullc::kBias, Shape1(param_.num_hidden));
     }
