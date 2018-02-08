@@ -110,8 +110,8 @@ class FullyConnectedOp : public Operator {
 
     // Legacy approach shown here for comparison:
     //   out = dot(data, wmat.T());
-    //linalg_gemm(data, wmat, out, false, true, s);
-    linalg_gemm(data, wmat, out, false, false, s); // (pin) use wmat shape of [input_size, num_hidden] TODO, fix for backward
+    linalg_gemm(data, wmat, out, false, true, s);
+    //linalg_gemm(data, wmat, out, false, false, s); // (pin) use wmat shape of [input_size, num_hidden] TODO, fix for backward
 
     if (!param_.no_bias) {
       Tensor<xpu, 1, DType> bias = in_data[fullc::kBias].get<xpu, 1, DType>(s);
@@ -229,8 +229,8 @@ class FullyConnectedProp : public OperatorProperty {
     } else {
       num_input = dshape.ProdShape(1, dshape.ndim());
     }
-    //SHAPE_ASSIGN_CHECK(*in_shape, fullc::kWeight, Shape2(param_.num_hidden, num_input));
-    SHAPE_ASSIGN_CHECK(*in_shape, fullc::kWeight, Shape2(num_input, param_.num_hidden));// (pin) use fast wmat shape num_input, num_hidden
+    SHAPE_ASSIGN_CHECK(*in_shape, fullc::kWeight, Shape2(param_.num_hidden, num_input));
+    //SHAPE_ASSIGN_CHECK(*in_shape, fullc::kWeight, Shape2(num_input, param_.num_hidden));// (pin) use fast wmat shape num_input, num_hidden
     if (!param_.no_bias) {
       SHAPE_ASSIGN_CHECK(*in_shape, fullc::kBias, Shape1(param_.num_hidden));
     }
