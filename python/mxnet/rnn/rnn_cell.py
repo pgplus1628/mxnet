@@ -431,13 +431,18 @@ class PackedLSTMCell(BaseRNNCell):
         super(PackedLSTMCell, self).__init__(prefix=prefix, params=params)
 
         self._num_hidden = num_hidden
-        self._xW = self.params.get('x2h_weight')
+        # (pin)
+        #self._xW = self.params.get('x2h_weight')
+        #self._xB = self.params.get('x2h_bias')
+        # (lingfan)
+        self._xW = self.params.get('x2h_weight', shape=(num_hidden*2, num_hidden*4))
+        self._xB = self.params.get('x2h_bias', shape=(num_hidden*4))
+        self._forget_bias = 1.0
         #self._iW = self.params.get('i2h_weight')
         #self._hW = self.params.get('h2h_weight')
         # we add the forget_bias to i2h_bias, this adds the bias to the forget gate activation
         #self._iB = self.params.get('i2h_bias', init=init.LSTMBias(forget_bias=forget_bias))
         #self._hB = self.params.get('h2h_bias')
-        self._xB = self.params.get('x2h_bias')
 
     @property
     def state_info(self):
@@ -460,19 +465,24 @@ class PackedLSTMCell(BaseRNNCell):
         #gates = i2h + h2h
 
         concat_input = symbol.Concat(inputs, states[0], dim=1, name='%sconcat'%name)
-        
+
+        """
         gates = symbol.FullyConnected(data=concat_input, weight=self._xW, bias=self._xB,
                                       num_hidden=self._num_hidden*4,
                                       name='%sx2h'%name)
+        """
+        # (lingfan): use dot instead of fc, dot in mxnet does not use cublas...
+        lstm_matrix = symbol.dot(concat_input, self._xW)
+        gates = symbol.broadcast_add(lstm_matrix, self._xB)
 
         slice_gates = symbol.SliceChannel(gates, num_outputs=4,
                                           name="%sslice"%name)
         in_gate = symbol.Activation(slice_gates[0], act_type="sigmoid",
                                     name='%si'%name)
 
-        forget_gate = symbol.Activation(slice_gates[1], act_type="sigmoid",
+        forget_gate = symbol.Activation(slice_gates[1] + self._forget_bias, act_type="sigmoid",
                                         name='%sf'%name)
- 
+
         in_transform = symbol.Activation(slice_gates[2], act_type="tanh",
                                          name='%sc'%name)
         out_gate = symbol.Activation(slice_gates[3], act_type="sigmoid",
